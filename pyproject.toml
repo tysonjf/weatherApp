@@ -1,0 +1,25 @@
+[project]
+name = "inkbird-bbq-mcp"
+version = "0.1.0"
+description = "MCP server + BLE data logger for the Inkbird INT-12-BW wireless BBQ thermometer"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "mcp>=1.2.0",
+    "bleak>=0.22.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+inkbird-logger = "inkbird_bbq.logger:main"
+inkbird-mcp = "inkbird_bbq.server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["inkbird_bbq"]
