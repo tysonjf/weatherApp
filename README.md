@@ -15,9 +15,17 @@ estimate when the meat will be done, and tell you what to do next.
 
 Options investigated:
 
-1. **Inkbird cloud API** — there is none. Inkbird has ignored years of
-   [community requests](https://community.inkbird.com/t/api-for-temp-sensors/10279)
-   for API/export access, so the app's cloud data is a dead end.
+1. **Inkbird cloud API** — there is none. The base station's Wi-Fi mode does
+   upload to Inkbird's cloud, but only their own app can read it: Inkbird has
+   ignored years of [community requests](https://community.inkbird.com/t/api-for-temp-sensors/10279)
+   for API/export access. Unlike Inkbird's older products, the INT-xx-BW
+   family is **not** on the Tuya platform (Inkbird staff have
+   [confirmed](https://community.inkbird.com/t/int-14-bw-homeassistant-tuya-support/166577)
+   no Tuya/Home Assistant support), so the Tuya IoT platform route used for
+   devices like the ITC-308 doesn't apply either. Reaching the cloud data
+   would mean reverse-engineering the app's private, encrypted API
+   (`api-inkbird.com` login + their own backend) — undocumented, unpublished
+   for this device family, and liable to break whenever Inkbird changes it.
 2. **Home Assistant** — the official [INKBIRD integration](https://www.home-assistant.io/integrations/inkbird/)
    works, but requires running a whole Home Assistant install.
 3. **Direct Bluetooth LE** ✅ — the INT-12-BW's BLE protocol (including its
