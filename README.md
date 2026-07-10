@@ -76,6 +76,45 @@ Then talk to Claude:
 | `list_cooks` | Past cook sessions |
 | `start_logger` / `stop_logger` | Manage the background BLE logger |
 
+## Using it from your phone
+
+Run the logger + MCP server on a laptop near the smoker, then interact from
+the Claude app on your phone. Two ways:
+
+### Option A (recommended): Claude Code Remote Control
+
+Claude Code can hand control of a laptop session to your phone — the session
+(and its local MCP servers, i.e. this one) keeps running on the laptop.
+
+```sh
+claude remote-control          # on the laptop, in this repo
+```
+
+Press space to show a QR code, scan it with the Claude mobile app (or find
+the session under Code in the app / claude.ai/code). Requires a Pro/Max/Team
+plan, Claude Code >= 2.1.51, and claude.ai login (not an API key). Keep the
+laptop awake and the terminal open (`caffeinate` on macOS helps).
+
+### Option B: custom connector (plain Claude chats, no Claude Code session)
+
+Serve MCP over HTTP and expose it through a tunnel:
+
+```sh
+.venv/bin/inkbird-mcp --http --token pick-a-long-random-string
+cloudflared tunnel --url http://127.0.0.1:8787     # or: ngrok http 8787
+```
+
+Then add `https://<tunnel-domain>/<your-token>/mcp` at
+[claude.ai/settings/connectors](https://claude.ai/settings/connectors) →
+Add custom connector. Connectors sync to the mobile app, so any chat on your
+phone can call the BBQ tools.
+
+Notes: quick tunnels get a new random domain each run, so you'd re-paste the
+connector URL — a named Cloudflare tunnel or ngrok reserved domain gives a
+stable one. The secret path token is the only access control; anyone with
+the full URL can read your cook data and start/stop the logger, so keep it
+private and pick a long token.
+
 ### Testing without the thermometer
 
 ```sh

@@ -1,8 +1,15 @@
-"""MCP stdio server exposing the Inkbird BBQ data to Claude.
+"""MCP server exposing the Inkbird BBQ data to Claude.
 
-Register with Claude Code:
+Two transports:
 
-    claude mcp add inkbird-bbq -- uv run --project /path/to/repo inkbird-mcp
+- stdio (default) — register with Claude Code on the same machine:
+
+      claude mcp add inkbird-bbq -- /path/to/.venv/bin/inkbird-mcp
+
+- HTTP (``inkbird-mcp --http``) — serves MCP over streamable HTTP so it can
+  be exposed through a tunnel and added to claude.ai / the Claude mobile app
+  as a custom connector. The endpoint lives under a secret path segment
+  (``/<token>/mcp``) so a leaked hostname alone isn't enough to reach it.
 
 Tools operate on the SQLite database written by ``inkbird-logger``; the
 ``start_logger`` tool can spawn the logger itself so a whole cook can be
@@ -11,7 +18,9 @@ managed from a Claude conversation.
 
 from __future__ import annotations
 
+import argparse
 import os
+import secrets
 import signal
 import statistics
 import subprocess
@@ -354,7 +363,54 @@ def stop_logger() -> dict:
 
 
 def main() -> None:
-    mcp.run()
+    p = argparse.ArgumentParser(description="Inkbird BBQ MCP server")
+    p.add_argument(
+        "--http",
+        action="store_true",
+        help="serve MCP over HTTP (for tunnels / Claude custom connectors) "
+        "instead of stdio",
+    )
+    p.add_argument("--host", default="127.0.0.1", help="HTTP bind address")
+    p.add_argument("--port", type=int, default=8787, help="HTTP port")
+    p.add_argument(
+        "--token",
+        default=None,
+        help="secret path segment for the HTTP endpoint (/<token>/mcp); "
+        "generated randomly if omitted — pass your own to keep the URL "
+        "stable across restarts",
+    )
+    args = p.parse_args()
+
+    if not args.http:
+        mcp.run()
+        return
+
+    from mcp.server.transport_security import TransportSecuritySettings
+
+    token = args.token or secrets.token_urlsafe(16)
+    mcp.settings.host = args.host
+    mcp.settings.port = args.port
+    mcp.settings.stateless_http = True
+    mcp.settings.streamable_http_path = f"/{token}/mcp"
+    # Requests arrive via a tunnel with a public Host header; access control
+    # is the secret path, not host validation.
+    mcp.settings.transport_security = TransportSecuritySettings(
+        enable_dns_rebinding_protection=False
+    )
+    print(f"MCP endpoint: http://{args.host}:{args.port}/{token}/mcp", file=sys.stderr)
+    print(
+        "Expose it with e.g.:  cloudflared tunnel --url http://127.0.0.1:"
+        f"{args.port}\nthen add  https://<your-tunnel-domain>/{token}/mcp  "
+        "as a custom connector at claude.ai/settings/connectors",
+        file=sys.stderr,
+    )
+    if not args.token:
+        print(
+            f"(random token generated — rerun with  --token {token}  to keep "
+            "the same URL next time)",
+            file=sys.stderr,
+        )
+    mcp.run(transport="streamable-http")
 
 
 if __name__ == "__main__":
