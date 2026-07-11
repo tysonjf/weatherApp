@@ -8,8 +8,14 @@ estimate when the meat will be done, and tell you what to do next.
 ┌─────────────┐   Bluetooth LE   ┌────────────────┐    SQLite    ┌─────────────┐
 │ INT-12-BW   │ ───────────────▶ │ inkbird-logger │ ───────────▶ │ inkbird-mcp │──▶ Claude
 │ base station│  (auth + poll)   │ (records temps)│  ~/.inkbird- │ (MCP tools) │
-└─────────────┘                  └────────────────┘   bbq/*.db   └─────────────┘
+└─────────────┘                  └───────┬────────┘   bbq/*.db   └─────────────┘
+                                         │ --upload-url (optional)
+                                         ▼ HTTPS
+                              your own website ([web/](web/))
 ```
+
+The logger can also forward every reading to your own cook-tracking website —
+see [Your own website, no laptop needed](#your-own-website-no-laptop-needed).
 
 ## Why this approach
 
@@ -83,6 +89,60 @@ Then talk to Claude:
 | `get_cook_history` | Downsampled time series for charting the cook curve |
 | `list_cooks` | Past cook sessions |
 | `start_logger` / `stop_logger` | Manage the background BLE logger |
+
+## Your own website, no laptop needed
+
+**Can the base station be reprogrammed to send readings to a custom server?
+No.** Its firmware is a closed box: Wi-Fi mode talks only to Inkbird's
+private cloud, there is no custom firmware for the INT-xx-BW family, and a
+failed reflash would brick it (see [Why this approach](#why-this-approach)).
+
+What works instead: let a **Raspberry Pi** (a ~$25 Pi Zero 2 W is plenty) be
+your "hub". It sits near the smoker on a phone charger, takes the Bluetooth
+connection this repo already speaks, and forwards readings over Wi-Fi to a
+website you own — laptop stays closed, temps visible from anywhere.
+
+```sh
+inkbird-logger --upload-url https://<your-app>.workers.dev/api/ingest \
+               --upload-token <shared-secret>
+```
+
+Readings queue in the Pi's local SQLite and upload in batches (default one
+POST per 30 s), so Wi-Fi drops or website downtime lose nothing — the backlog
+backfills automatically. The website half lives in [`web/`](web/): a Next.js
+app for Cloudflare's free tier (Workers + D1, tRPC + Drizzle) with live
+temps, cook sessions, a per-session graph, and comments you can pin to
+moments on the graph ("added more wood to fire"). Deploy steps, Cloudflare
+Access lockdown, and the free-tier budget math are in
+[`web/README.md`](web/README.md).
+
+To make the Pi hands-off, run the logger as a systemd service
+(`/etc/systemd/system/inkbird-logger.service`):
+
+```ini
+[Unit]
+Description=Inkbird BBQ logger
+After=network-online.target bluetooth.target
+
+[Service]
+User=pi
+ExecStart=/home/pi/inkbird-bbq/.venv/bin/inkbird-logger
+Environment=INKBIRD_UPLOAD_URL=https://<your-app>.workers.dev/api/ingest
+Environment=INKBIRD_UPLOAD_TOKEN=<shared-secret>
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```sh
+sudo systemctl enable --now inkbird-logger
+```
+
+The logger already reconnects with backoff when the thermometer goes out of
+range or powers off, so the Pi can just run 24/7 and pick cooks up
+automatically.
 
 ## Using it from your phone
 

@@ -1,0 +1,76 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #16130f;
+  --panel: #211c16;
+  --border: #383025;
+  --text: #efe7db;
+  --muted: #9c8f7d;
+  --accent: #e8632c;
+  --accent2: #e8b02c;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, sans-serif;
+  line-height: 1.5;
+}
+
+main { max-width: 880px; margin: 0 auto; padding: 24px 16px 64px; }
+
+h1 { font-size: 1.5rem; margin-bottom: 4px; }
+h2 { font-size: 1.1rem; margin: 24px 0 8px; }
+a { color: var(--accent2); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.muted { color: var(--muted); font-size: 0.875rem; }
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  margin-top: 12px;
+}
+
+.temp-grid { display: flex; flex-wrap: wrap; gap: 16px; }
+.temp-grid .cell .value { font-size: 1.8rem; font-weight: 600; }
+.temp-grid .cell .label { color: var(--muted); font-size: 0.8rem; }
+
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+input, select, button {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 0.9rem;
+}
+button { cursor: pointer; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+button:disabled { opacity: 0.5; cursor: default; }
+
+ul.cook-list { list-style: none; }
+ul.cook-list li {
+  display: flex; justify-content: space-between; gap: 8px;
+  padding: 10px 0; border-bottom: 1px solid var(--border);
+}
+ul.cook-list li:last-child { border-bottom: none; }
+
+.badge {
+  font-size: 0.75rem; padding: 2px 8px; border-radius: 999px;
+  background: var(--accent); color: #fff;
+}
+
+ul.note-list { list-style: none; }
+ul.note-list li {
+  display: flex; gap: 10px; align-items: baseline;
+  padding: 6px 0; border-bottom: 1px solid var(--border);
+}
+ul.note-list li:last-child { border-bottom: none; }
+ul.note-list .time { color: var(--accent2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+ul.note-list button { padding: 2px 8px; font-size: 0.75rem; }
+
+.error { color: #e86a5e; font-size: 0.875rem; }

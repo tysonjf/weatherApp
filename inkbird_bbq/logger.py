@@ -30,6 +30,23 @@ log = logging.getLogger("inkbird.logger")
 MIN_WRITE_INTERVAL = 2.0  # don't spam the DB if notifications are rapid
 
 
+def start_uploader(args, stop: asyncio.Event) -> asyncio.Task | None:
+    """If an upload URL is configured, run the uploader alongside the logger.
+
+    Uses its own DB connection so its commits don't interleave with the
+    recorder's.
+    """
+    if not args.upload_url:
+        return None
+    from .uploader import Uploader
+
+    if not args.upload_token:
+        log.warning("--upload-url set without --upload-token; endpoint should reject this")
+    up = Uploader(db.connect(), args.upload_url, args.upload_token,
+                  interval=args.upload_interval)
+    return asyncio.create_task(up.run(stop))
+
+
 class Recorder:
     def __init__(self, conn):
         self.conn = conn
@@ -71,11 +88,14 @@ async def run_ble(args) -> None:
             await asyncio.sleep(5)
 
     hb = asyncio.create_task(heartbeat())
+    up = start_uploader(args, stop)
     try:
         await client.run_forever(stop, on_state=lambda s: db.set_status(conn, state=s))
     finally:
         stop.set()
         hb.cancel()
+        if up:
+            await up  # let the uploader flush queued readings
         db.set_status(conn, state="stopped", last_seen=time.time())
 
 
@@ -127,6 +147,7 @@ async def run_simulator(args) -> None:
     )
     log.info("simulator running (time_scale=%sx, interval=%ss)", args.time_scale, args.interval)
     batts = {"base": 100, "probe1": 97, "probe2": None}
+    up = start_uploader(args, stop)
     try:
         while not stop.is_set():
             db.insert_reading(conn, time.time(), sim.sample(time.time()), batts)
@@ -136,6 +157,9 @@ async def run_simulator(args) -> None:
             except asyncio.TimeoutError:
                 pass
     finally:
+        stop.set()
+        if up:
+            await up
         db.set_status(conn, state="stopped", last_seen=time.time())
 
 
@@ -146,6 +170,12 @@ def main() -> None:
     p.add_argument("--simulate", action="store_true", help="generate fake cook data (no hardware)")
     p.add_argument("--time-scale", type=float, default=1.0,
                    help="simulator speed-up factor (e.g. 60 = 1 min real -> 1 h cook)")
+    p.add_argument("--upload-url", default=os.environ.get("INKBIRD_UPLOAD_URL"),
+                   help="POST readings to this HTTPS endpoint (env: INKBIRD_UPLOAD_URL)")
+    p.add_argument("--upload-token", default=os.environ.get("INKBIRD_UPLOAD_TOKEN"),
+                   help="bearer token for --upload-url (env: INKBIRD_UPLOAD_TOKEN)")
+    p.add_argument("--upload-interval", type=float, default=30.0,
+                   help="seconds between upload batches (default 30)")
     p.add_argument("-v", "--verbose", action="store_true")
     args = p.parse_args()
 
