@@ -97,10 +97,16 @@ No.** Its firmware is a closed box: Wi-Fi mode talks only to Inkbird's
 private cloud, there is no custom firmware for the INT-xx-BW family, and a
 failed reflash would brick it (see [Why this approach](#why-this-approach)).
 
-What works instead: let a **Raspberry Pi** (a ~$25 Pi Zero 2 W is plenty) be
-your "hub". It sits near the smoker on a phone charger, takes the Bluetooth
-connection this repo already speaks, and forwards readings over Wi-Fi to a
-website you own — laptop stays closed, temps visible from anywhere.
+What works instead: a small always-on box near the smoker acts as your own
+"hub" — it takes the Bluetooth connection this repo already speaks and
+forwards readings over Wi-Fi to a website you own. Two options:
+
+- **~$10 ESP32 microcontroller** (Seeed XIAO ESP32-C6) running the ESPHome
+  config in [`esphome/`](esphome/) — cheapest, zero maintenance, no OS.
+  Flash once over USB, then it runs standalone off a phone charger.
+- **Raspberry Pi** (Zero 2 W or any model) running `inkbird-logger` below —
+  costs more, but its local SQLite queue backfills any readings missed
+  during Wi-Fi/website outages, and it can also host the MCP server.
 
 ```sh
 inkbird-logger --upload-url https://<your-app>.workers.dev/api/ingest \

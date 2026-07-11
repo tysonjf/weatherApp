@@ -1,0 +1,451 @@
+# Inkbird INT-12-BW -> your website, on a ~$10 ESP32 (no computer needed)
+# ========================================================================
+# Adapted from https://github.com/paul43210/inkbird-bw-ble (MIT,
+# Paul Faure + Claude), which targets Home Assistant. This version has no
+# Home Assistant: it authenticates to the thermometer over BLE, parses the
+# temperature telemetry, and POSTs a reading to your Cloudflare app (web/)
+# every ${upload_interval} — same JSON, same bearer token, same /api/ingest
+# endpoint as the Python logger.
+#
+# Hardware: Seeed XIAO ESP32-C6 (what upstream was validated on). Any ESP32
+# with BLE 5.x works — adjust `esp32.board`.
+#
+# Setup (one-time, needs any computer with a USB port just for flashing):
+#   1. cp secrets.yaml.example secrets.yaml   # fill in Wi-Fi, token, etc.
+#   2. Replace inkbird_mac below (see esphome/README.md for finding it)
+#   3. pip install esphome && esphome run inkbird-bridge.yaml
+# After that the board runs standalone forever; updates flash over Wi-Fi.
+
+substitutions:
+  inkbird_mac: "AA:BB:CC:DD:EE:FF"   # <-- REPLACE with your base station's BLE MAC
+  device_name: "inkbird-bridge"
+  friendly_name: "Inkbird Bridge"
+  timezone: "Australia/Sydney"
+
+  # Where readings go (path must be /api/ingest on your deployed web/ app)
+  upload_url: !secret upload_url
+  upload_token: !secret upload_token
+  upload_interval: 30s
+
+  # Spec UUIDs — do not edit
+  svc_ff00:    '0000ff00-0000-1000-8000-00805f9b34fb'
+  chr_ff01:    '0000ff01-0000-1000-8000-00805f9b34fb'
+  chr_ff02:    '0000ff02-0000-1000-8000-00805f9b34fb'
+  chr_ff03:    '0000ff03-0000-1000-8000-00805f9b34fb'
+  chr_ff04:    '0000ff04-0000-1000-8000-00805f9b34fb'
+  chr_ff05:    '0000ff05-0000-1000-8000-00805f9b34fb'
+  chr_ff06:    '0000ff06-0000-1000-8000-00805f9b34fb'
+  chr_battery: '00002a19-0000-1000-8000-00805f9b34fb'
+
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+  includes:
+    - inkbird_auth.h
+
+esp32:
+  board: esp32-c6-devkitc-1   # works for the XIAO ESP32-C6; change for other variants
+  framework:
+    type: esp-idf
+
+logger:
+  level: DEBUG
+  logs:
+    esp32_ble_tracker: INFO
+    ble_sensor: INFO
+
+# No `api:` block on purpose: it's for Home Assistant, and with it configured
+# but never connected the board reboots every 15 minutes.
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "${friendly_name} Fallback"
+    password: !secret fallback_ap_password
+
+captive_portal:
+
+# SNTP is required — the BLE auth response embeds wall-clock time, and the
+# upload timestamps use it too.
+time:
+  - platform: sntp
+    id: sntp_time
+    timezone: ${timezone}
+    servers:
+      - 0.pool.ntp.org
+      - time.cloudflare.com
+      - pool.ntp.org
+
+http_request:
+  useragent: inkbird-bridge
+  timeout: 15s
+
+# Upload one reading per interval. No local backlog (the ESP32 has no disk):
+# if Wi-Fi or the site is down, that interval's reading is skipped — the D1
+# database is the system of record.
+interval:
+  - interval: ${upload_interval}
+    then:
+      - if:
+          condition:
+            and:
+              - wifi.connected:
+              - lambda: 'return id(g_authed);'
+              - lambda: 'return id(sntp_time).now().is_valid();'
+          then:
+            - http_request.post:
+                url: ${upload_url}
+                request_headers:
+                  Content-Type: application/json
+                  Authorization: "Bearer ${upload_token}"
+                json: |-
+                  root["source"] = "esphome-bridge";
+                  JsonArray arr = root["readings"].to<JsonArray>();
+                  JsonObject r = arr.add<JsonObject>();
+                  r["ts"] = (double) id(sntp_time).now().timestamp;
+                  if (!isnan(id(probe1_internal).state)) r["probe1_internal"] = id(probe1_internal).state;
+                  if (!isnan(id(probe1_ambient).state))  r["probe1_ambient"]  = id(probe1_ambient).state;
+                  if (!isnan(id(probe2_internal).state)) r["probe2_internal"] = id(probe2_internal).state;
+                  if (!isnan(id(base_battery).state))    r["batt_base"] = (int) id(base_battery).state;
+                on_response:
+                  then:
+                    - lambda: |-
+                        if (response->status_code == 200) {
+                          ESP_LOGD("upload", "reading uploaded");
+                        } else {
+                          ESP_LOGW("upload", "upload failed: HTTP %d", response->status_code);
+                        }
+
+# Aggressive scan duty cycle (~94%) so we catch the base's advertisement
+# quickly when it wakes up. Drops first-connect time from ~3 min to ~30-45 s.
+# If WiFi performance degrades, dial back to 500/400 (80% duty cycle).
+esp32_ble_tracker:
+  scan_parameters:
+    active: true
+    interval: 320ms
+    window: 300ms
+
+globals:
+  - id: g_challenge
+    type: uint8_t[6]
+    initial_value: '{0, 0, 0, 0, 0, 0}'
+  - id: g_have_challenge
+    type: bool
+    initial_value: 'false'
+  - id: g_authed
+    type: bool
+    initial_value: 'false'
+  - id: g_init_sent
+    type: bool
+    initial_value: 'false'
+
+ble_client:
+  - mac_address: ${inkbird_mac}
+    id: inkbird
+    on_connect:
+      then:
+        - lambda: |-
+            id(g_authed) = false;
+            id(g_init_sent) = false;
+            id(g_have_challenge) = false;
+            ESP_LOGI("inkbird", "Connected, awaiting subscriptions to settle");
+        - delay: 2s
+        - lambda: 'ESP_LOGI("inkbird", "Requesting challenge: 01 FB");'
+        - ble_client.ble_write:
+            id: inkbird
+            service_uuid: ${svc_ff00}
+            characteristic_uuid: ${chr_ff02}
+            value: [0x01, 0xFB]
+    on_disconnect:
+      then:
+        - lambda: |-
+            id(g_authed) = false;
+            id(g_init_sent) = false;
+            id(g_have_challenge) = false;
+            ESP_LOGI("inkbird", "Disconnected");
+
+script:
+  - id: send_auth_response
+    then:
+      - ble_client.ble_write:
+          id: inkbird
+          service_uuid: ${svc_ff00}
+          characteristic_uuid: ${chr_ff02}
+          value: !lambda |-
+            uint8_t challenge[6];
+            for (int i = 0; i < 6; i++) challenge[i] = id(g_challenge)[i];
+            return inkbird_proto::build_fc_frame(challenge);
+      - lambda: 'ESP_LOGI("inkbird", "Auth response 08 FC sent");'
+
+  - id: send_init_after_auth
+    then:
+      - lambda: 'ESP_LOGI("inkbird", "Auth accepted, sending clock sync");'
+      - ble_client.ble_write:
+          id: inkbird
+          service_uuid: ${svc_ff00}
+          characteristic_uuid: ${chr_ff02}
+          value: !lambda 'return inkbird_proto::build_clock_sync();'
+      - delay: 200ms
+      # Steady-state polls: temp/state/battery. The device keeps notifying
+      # FF01/FF03/battery on its own after this.
+      - ble_client.ble_write:
+          id: inkbird
+          service_uuid: ${svc_ff00}
+          characteristic_uuid: ${chr_ff02}
+          value: [0x02, 0xF1, 0x01, 0x02, 0xF1, 0x03, 0x02, 0xF1, 0x19]
+      - lambda: 'ESP_LOGI("inkbird", "Init complete, steady-state polls dispatched");'
+
+sensor:
+  # === FF01 telemetry — parallel parsers, signed LE16 °C×10 -> °C ===
+  # (upstream converts to °F; here we keep °C to match the web app's schema)
+  - platform: ble_client
+    type: characteristic
+    ble_client_id: inkbird
+    id: probe1_internal_raw
+    internal: true
+    service_uuid: ${svc_ff00}
+    characteristic_uuid: ${chr_ff01}
+    notify: true
+    update_interval: never
+    on_value:
+      then:
+        - if:
+            condition:
+              lambda: 'return !isnan(x);'
+            then:
+              - sensor.template.publish:
+                  id: probe1_internal
+                  state: !lambda 'return x;'
+    lambda: |-
+      if (x.size() < 2) return NAN;
+      int16_t raw = (int16_t)(x[0] | (x[1] << 8));
+      if (raw == 32766 || raw == 32767 || raw == (int16_t)0x8000) return NAN;
+      return raw / 10.0f;
+
+  - platform: ble_client
+    type: characteristic
+    ble_client_id: inkbird
+    id: probe1_ambient_raw
+    internal: true
+    service_uuid: ${svc_ff00}
+    characteristic_uuid: ${chr_ff01}
+    notify: true
+    update_interval: never
+    on_value:
+      then:
+        - if:
+            condition:
+              lambda: 'return !isnan(x);'
+            then:
+              - sensor.template.publish:
+                  id: probe1_ambient
+                  state: !lambda 'return x;'
+    lambda: |-
+      if (x.size() < 4) return NAN;
+      int16_t raw = (int16_t)(x[2] | (x[3] << 8));
+      if (raw == 32766 || raw == 32767 || raw == (int16_t)0x8000) return NAN;
+      return raw / 10.0f;
+
+  - platform: ble_client
+    type: characteristic
+    ble_client_id: inkbird
+    id: probe2_internal_raw
+    internal: true
+    service_uuid: ${svc_ff00}
+    characteristic_uuid: ${chr_ff01}
+    notify: true
+    update_interval: never
+    on_value:
+      then:
+        - if:
+            condition:
+              lambda: 'return !isnan(x);'
+            then:
+              - sensor.template.publish:
+                  id: probe2_internal
+                  state: !lambda 'return x;'
+    lambda: |-
+      if (x.size() < 7) return NAN;
+      int16_t raw = (int16_t)(x[5] | (x[6] << 8));
+      if (raw == 32766 || raw == 32767 || raw == (int16_t)0x8000) return NAN;
+      return raw / 10.0f;
+
+  # === FF02 handler: handshake state machine ===
+  - platform: ble_client
+    type: characteristic
+    ble_client_id: inkbird
+    id: ff02_handler
+    internal: true
+    service_uuid: ${svc_ff00}
+    characteristic_uuid: ${chr_ff02}
+    notify: true
+    update_interval: never
+    on_value:
+      then:
+        - if:
+            condition:
+              lambda: 'return id(g_have_challenge);'
+            then:
+              - lambda: 'id(g_have_challenge) = false;'
+              - delay: 100ms
+              - script.execute: send_auth_response
+        - if:
+            condition:
+              lambda: 'return id(g_authed) && !id(g_init_sent);'
+            then:
+              - lambda: 'id(g_init_sent) = true;'
+              - script.execute: send_init_after_auth
+    lambda: |-
+      // Frame-by-frame parse: <LEN><TYPE><PAYLOAD>, possibly concatenated.
+      size_t i = 0;
+      while (i + 1 < x.size()) {
+        uint8_t len = x[i];
+        if (len < 1 || i + 1 + len > x.size()) break;
+        uint8_t type = x[i + 1];
+        const uint8_t *p = &x[i + 2];
+        uint8_t plen = len - 1;
+
+        switch (type) {
+          case 0xFB:  // Challenge <LEN=7><FB><6>
+            if (plen == 6) {
+              ESP_LOGI("inkbird", "Captured challenge");
+              for (int k = 0; k < 6; k++) id(g_challenge)[k] = p[k];
+              id(g_have_challenge) = true;
+            }
+            break;
+          case 0xFC:  // Auth ACK <LEN=2><FC><status>; 0x00 = accepted
+            if (plen >= 1) {
+              if (p[0] == 0x00) {
+                if (!id(g_authed)) {
+                  ESP_LOGI("inkbird", "AUTH ACCEPTED via FF02 ACK (02 fc 00)");
+                  id(g_authed) = true;
+                }
+              } else {
+                ESP_LOGW("inkbird", "Auth REJECTED, status=0x%02x", p[0]);
+              }
+            }
+            break;
+          default:
+            break;  // setting reports — not needed for upload-only bridge
+        }
+        i += 1 + len;
+      }
+      return NAN;
+
+  # === FF03 parser: probe dock states + (secondary) auth-success signal ===
+  - platform: ble_client
+    type: characteristic
+    ble_client_id: inkbird
+    id: ff03_parser
+    internal: true
+    service_uuid: ${svc_ff00}
+    characteristic_uuid: ${chr_ff03}
+    notify: true
+    update_interval: never
+    on_value:
+      then:
+        - if:
+            condition:
+              lambda: 'return id(g_authed) && !id(g_init_sent);'
+            then:
+              - lambda: 'id(g_init_sent) = true;'
+              - script.execute: send_init_after_auth
+    lambda: |-
+      // Bytes 0 and 2 = dock state (0x03 = docked) for the two probes.
+      // A docked probe's temps go NaN so the upload sends nulls for it.
+      if (x.size() >= 3) {
+        if (x[0] == 0x03) {
+          id(probe1_internal).publish_state(NAN);
+          id(probe1_ambient).publish_state(NAN);
+        }
+        if (x[2] == 0x03) {
+          id(probe2_internal).publish_state(NAN);
+        }
+      }
+      // Byte 40 (verify) — only present in full-size FF03 packets; the
+      // INT-12-BW usually sends 7-byte FF03. Kept for other family models.
+      if (x.size() > 40 && x[40] != 0 && !id(g_authed)) {
+        ESP_LOGI("inkbird", "AUTH ACCEPTED via FF03 byte 40 = %d", x[40]);
+        id(g_authed) = true;
+      }
+      return NAN;
+
+  # === FF04, FF05, FF06: alarm channels — subscribed but not parsed ===
+  - platform: ble_client
+    type: characteristic
+    ble_client_id: inkbird
+    id: ff04_subscriber
+    internal: true
+    service_uuid: ${svc_ff00}
+    characteristic_uuid: ${chr_ff04}
+    notify: true
+    update_interval: never
+    lambda: 'return NAN;'
+
+  - platform: ble_client
+    type: characteristic
+    ble_client_id: inkbird
+    id: ff05_subscriber
+    internal: true
+    service_uuid: ${svc_ff00}
+    characteristic_uuid: ${chr_ff05}
+    notify: true
+    update_interval: never
+    lambda: 'return NAN;'
+
+  - platform: ble_client
+    type: characteristic
+    ble_client_id: inkbird
+    id: ff06_subscriber
+    internal: true
+    service_uuid: ${svc_ff00}
+    characteristic_uuid: ${chr_ff06}
+    notify: true
+    update_interval: never
+    lambda: 'return NAN;'
+
+  # === Battery (standard 0x2A19) ===
+  - platform: ble_client
+    type: characteristic
+    ble_client_id: inkbird
+    id: base_battery
+    internal: true
+    service_uuid: ${svc_ff00}
+    characteristic_uuid: ${chr_battery}
+    notify: true
+    update_interval: never
+    filters:
+      - filter_out: nan
+    lambda: |-
+      if (x.size() < 1) return NAN;
+      uint8_t v = x[0];
+      if (v == 0x7F) return NAN;
+      if (v > 100) v = 100;
+      return (float)v;
+
+  # === Last-known-value holders read by the uploader ===
+  - platform: template
+    id: probe1_internal
+    internal: true
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    update_interval: never
+
+  - platform: template
+    id: probe1_ambient
+    internal: true
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    update_interval: never
+
+  - platform: template
+    id: probe2_internal
+    internal: true
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    update_interval: never

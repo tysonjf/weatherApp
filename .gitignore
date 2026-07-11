@@ -12,3 +12,7 @@ build/
 *.db-shm
 .DS_Store
 .env
+
+# esphome
+esphome/secrets.yaml
+esphome/.esphome/
