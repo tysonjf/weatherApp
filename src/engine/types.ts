@@ -105,6 +105,19 @@ export interface FinalDoughSpec {
   activity?: number
 }
 
+export type Appetite = 'light' | 'normal' | 'hungry'
+
+/** Pizza night planning. */
+export interface PartySpec {
+  adults: number
+  kids: number
+  appetite: Appetite
+  /** Minutes between pizzas (null = the oven's typical cadence). */
+  cadenceMin: number | null
+  /** Bake a spare. */
+  spare: boolean
+}
+
 /** What actually happened while making the dough. */
 export interface LiveLog {
   /** Stage id → when it was actually mixed (epoch ms). Mixed stages have their amounts locked. */
@@ -164,6 +177,8 @@ export interface Recipe {
   notes: string
   /** Live tracking of a dough in progress. */
   live?: LiveLog
+  /** Pizza night planner settings. */
+  party?: PartySpec
 }
 
 /* ------------------------------------------------------------------ */

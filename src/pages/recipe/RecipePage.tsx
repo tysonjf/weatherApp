@@ -18,12 +18,13 @@ import { shareUrl } from '../../state/share'
 import { GuideTab } from './GuideTab'
 import { FormulaTab } from './FormulaTab'
 import { LiveCard } from './LiveCard'
+import { PartyTab } from './PartyTab'
 import { FitCard } from '../../components/FitCard'
 import { JournalSheet } from '../journal/JournalSheet'
 import { JournalEntryCard } from '../journal/JournalPage'
 import { resetLive } from '../../engine/replan'
 
-type Tab = 'recipe' | 'forecast' | 'guide' | 'formula'
+type Tab = 'recipe' | 'forecast' | 'guide' | 'party' | 'formula'
 
 export function RecipePage() {
   const { id } = useParams()
@@ -212,6 +213,7 @@ export function RecipePage() {
               ['recipe', 'Recipe'],
               ['forecast', 'Forecast'],
               ['guide', 'Bake guide'],
+              ['party', 'Pizza night'],
               ['formula', 'Formula'],
             ] as [Tab, string][]
           ).map(([t, label]) => (
@@ -333,6 +335,7 @@ export function RecipePage() {
         )}
 
         {result && tab === 'guide' && <GuideTab recipe={recipe} result={result} bake={bake} now={now} />}
+        {result && tab === 'party' && <PartyTab recipe={recipe} result={result} bake={bake} />}
         {result && tab === 'formula' && <FormulaTab recipe={recipe} result={result} />}
       </main>
 

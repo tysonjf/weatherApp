@@ -17,6 +17,7 @@ import { CalibrateTool } from './pages/tools/CalibrateTool'
 import { PanTool } from './pages/tools/PanTool'
 import { StarterTool } from './pages/tools/StarterTool'
 import { JournalPage } from './pages/journal/JournalPage'
+import { BakeMode } from './pages/recipe/BakeMode'
 
 export default function App() {
   return (
@@ -26,6 +27,7 @@ export default function App() {
         <Route path="new" element={<NewDoughPage />} />
         <Route path="wizard/:step" element={<WizardPage />} />
         <Route path="recipe/:id" element={<RecipePage />} />
+        <Route path="recipe/:id/bake" element={<BakeMode />} />
         <Route path="import" element={<ImportPage />} />
         <Route path="guides" element={<GuidesPage />} />
         <Route path="guides/:id" element={<GuidePage />} />
