@@ -163,93 +163,96 @@ export function computeRecipe(recipe: Recipe, opts: ComputeOptions = {}): Recipe
   const finalStartH = -(finalH + finalMixH)
 
   /* ---------------- Preferments ---------------- */
-  const prefStates: PrefState[] = prefs.map((p) => {
-    const pc = comp0.prefs.find((c) => c.id === p.id)!
-    const phases = p.phases.filter((ph) => ph.hours > 0)
-    const startH = finalStartH - totalHours(phases)
-    // Ingredients kept in the kitchen are at the room temperature of the moment you mix.
-    const room = roomAtH(startH)
-    const flourC = k.flourC ?? room
-    const masses: ThermalMass[] = [{ label: 'flour', massG: pc.freshFlour, cp: C_FLOUR, tempC: flourC }]
-    if (pc.seed > 0) masses.push({ label: 'seed', massG: pc.seed, cp: mixCp(1, p.seedHydration / 100), tempC: room })
-    if (pc.salt > 0) masses.push({ label: 'salt', massG: pc.salt, cp: C_SALT, tempC: room })
-    const ws = solveWater({
-      masses,
-      waterG: pc.freshWater,
-      newFlourG: pc.freshFlour,
-      targetC: p.targetTempC,
-      mixerRiseC: prefRise,
-      tapC: k.tapC,
-    })
-    const classic = classicWaterTemp({ targetC: p.targetTempC, flourC, roomC: room, frictionFactorC: 0, prefermentTempsC: [] })
-    const water: WaterPlan = { ...ws, targetC: p.targetTempC, mixerRiseC: prefRise, classicWaterC: classic }
-    let segStart = startH
-    const segs: SimSegment[] = phases.map((ph) => {
-      const seg = segFor(ph, segStart, Math.max(100, pc.total))
-      segStart += ph.hours
-      return seg
-    })
-    const startC = p.measuredMixC ?? ws.expectedC
-    const sim = simulate(segs, startC)
-    const activity = p.activity ?? 1
-    let yeastFreshPct = 0
-    let seedPct = 0
-    let ripeness = 1
-    if (p.leavening === 'yeast') {
-      const res = prefYeast(p, sim, p.amountMode === 'manual' ? yeastToFresh(p.manualPct, r.yeastType) : null, scale)
-      yeastFreshPct = res.y
-      ripeness = res.ripeness
-    } else {
-      const d = sim.sdDoublings * speed
-      seedPct = p.amountMode === 'manual' ? p.manualPct : Math.min(200, seedForDoublings(d) * 100 * alt)
-      ripeness = d / doublingsForSeed(seedPct / 100 / alt)
-    }
-    ripeness *= activity
-    // Place phases on the bake-relative clock.
-    let t = startH
-    const resolved: ResolvedPhase[] = phases.map((ph, i) => {
-      const seg = sim.segments[i]
-      const rp: ResolvedPhase = {
-        ...ph,
-        tempC: seg.meanEnvC,
-        startH: t,
-        endH: t + ph.hours,
-        progress: sim.eqHours > 0 ? (seg.eqHours / sim.eqHours) * ripeness : 0,
-        meanDoughC: seg.meanC,
-        endDoughC: seg.endC,
+  // Masses for the water solves come from `mc`. The leavening itself changes those masses (a large
+  // sourdough seed is a lot of cold or warm dough), so the passes below are iterated to a fixed point.
+  const makePrefStates = (mc: Composition): PrefState[] =>
+    prefs.map((p) => {
+      const pc = mc.prefs.find((c) => c.id === p.id)!
+      const phases = p.phases.filter((ph) => ph.hours > 0)
+      const startH = finalStartH - totalHours(phases)
+      // Ingredients kept in the kitchen are at the room temperature of the moment you mix.
+      const room = roomAtH(startH)
+      const flourC = k.flourC ?? room
+      const masses: ThermalMass[] = [{ label: 'flour', massG: pc.freshFlour, cp: C_FLOUR, tempC: flourC }]
+      if (pc.seed > 0) masses.push({ label: 'seed', massG: pc.seed, cp: mixCp(1, p.seedHydration / 100), tempC: room })
+      if (pc.salt > 0) masses.push({ label: 'salt', massG: pc.salt, cp: C_SALT, tempC: room })
+      const ws = solveWater({
+        masses,
+        waterG: pc.freshWater,
+        newFlourG: pc.freshFlour,
+        targetC: p.targetTempC,
+        mixerRiseC: prefRise,
+        tapC: k.tapC,
+      })
+      const classic = classicWaterTemp({ targetC: p.targetTempC, flourC, roomC: room, frictionFactorC: 0, prefermentTempsC: [] })
+      const water: WaterPlan = { ...ws, targetC: p.targetTempC, mixerRiseC: prefRise, classicWaterC: classic }
+      let segStart = startH
+      const segs: SimSegment[] = phases.map((ph) => {
+        const seg = segFor(ph, segStart, Math.max(100, pc.total))
+        segStart += ph.hours
+        return seg
+      })
+      const startC = p.measuredMixC ?? ws.expectedC
+      const sim = simulate(segs, startC)
+      const activity = p.activity ?? 1
+      let yeastFreshPct = 0
+      let seedPct = 0
+      let ripeness = 1
+      if (p.leavening === 'yeast') {
+        const res = prefYeast(p, sim, p.amountMode === 'manual' ? yeastToFresh(p.manualPct, r.yeastType) : null, scale)
+        yeastFreshPct = res.y
+        ripeness = res.ripeness
+      } else {
+        const d = sim.sdDoublings * speed
+        seedPct = p.amountMode === 'manual' ? p.manualPct : Math.min(200, seedForDoublings(d) * 100 * alt)
+        ripeness = d / doublingsForSeed(seedPct / 100 / alt)
       }
-      t += ph.hours
-      return rp
+      ripeness *= activity
+      // Place phases on the bake-relative clock.
+      let t = startH
+      const resolved: ResolvedPhase[] = phases.map((ph, i) => {
+        const seg = sim.segments[i]
+        const rp: ResolvedPhase = {
+          ...ph,
+          tempC: seg.meanEnvC,
+          startH: t,
+          endH: t + ph.hours,
+          progress: sim.eqHours > 0 ? (seg.eqHours / sim.eqHours) * ripeness : 0,
+          meanDoughC: seg.meanC,
+          endDoughC: seg.endC,
+        }
+        t += ph.hours
+        return rp
+      })
+      const ripe = ripenessOf(
+        p.leavening === 'sourdough'
+          ? { eq: 0, sd: ratio(ripeness, sim.sdDoublings), biga: 0 }
+          : p.type === 'biga'
+            ? { eq: 0, sd: 0, biga: ratio(ripeness, sim.bigaEq18) }
+            : { eq: ratio(ripeness, sim.eqHours), sd: 0, biga: 0 },
+      )
+      return {
+        spec: p,
+        roomC: room,
+        yeastFreshPct,
+        seedPct,
+        ripeness,
+        mixC: startC,
+        endC: sim.endC,
+        eqH: sim.eqHours,
+        sdD: sim.sdDoublings,
+        phases: resolved,
+        water,
+        curve: sim.curve.map((c) => ({ t: startH + c.t, doughC: c.doughC, envC: c.envC, ripeness: ripe(c) })),
+      }
     })
-    const ripe = ripenessOf(
-      p.leavening === 'sourdough'
-        ? { eq: 0, sd: ratio(ripeness, sim.sdDoublings), biga: 0 }
-        : p.type === 'biga'
-          ? { eq: 0, sd: 0, biga: ratio(ripeness, sim.bigaEq18) }
-          : { eq: ratio(ripeness, sim.eqHours), sd: 0, biga: 0 },
-    )
-    return {
-      spec: p,
-      roomC: room,
-      yeastFreshPct,
-      seedPct,
-      ripeness,
-      mixC: startC,
-      endC: sim.endC,
-      eqH: sim.eqHours,
-      sdD: sim.sdDoublings,
-      phases: resolved,
-      water,
-      curve: sim.curve.map((c) => ({ t: startH + c.t, doughC: c.doughC, envC: c.envC, ripeness: ripe(c) })),
-    }
-  })
 
   /* ---------------- Final dough water & thermal ---------------- */
   const finalRoom = roomAtH(finalStartH)
   const finalFlourC = k.flourC ?? finalRoom
-  const finalMasses = (comp: Composition): ThermalMass[] => {
+  const finalMasses = (comp: Composition, states: PrefState[]): ThermalMass[] => {
     const m: ThermalMass[] = [{ label: 'flour', massG: comp.final.flour, cp: C_FLOUR, tempC: finalFlourC }]
-    for (const ps of prefStates) {
+    for (const ps of states) {
       const pc = comp.prefs.find((c) => c.id === ps.spec.id)!
       m.push({ label: `pref:${ps.spec.id}`, massG: pc.total, cp: mixCp(pc.flour, pc.water), tempC: ps.endC })
     }
@@ -261,9 +264,9 @@ export function computeRecipe(recipe: Recipe, opts: ComputeOptions = {}): Recipe
       m.push({ label: 'sugar', massG: comp.final.sugar + comp.final.malt, cp: C_SUGAR, tempC: finalRoom })
     return m
   }
-  const finalWater = (comp: Composition) => {
+  const finalWater = (comp: Composition, states: PrefState[]) => {
     const ws = solveWater({
-      masses: finalMasses(comp),
+      masses: finalMasses(comp, states),
       waterG: comp.final.water,
       newFlourG: comp.final.flour,
       targetC: k.targetFdtC,
@@ -275,77 +278,117 @@ export function computeRecipe(recipe: Recipe, opts: ComputeOptions = {}): Recipe
       flourC: finalFlourC,
       roomC: finalRoom,
       frictionFactorC: mixer.classicFF,
-      prefermentTempsC: prefStates.map((p) => p.endC),
+      prefermentTempsC: states.map((p) => p.endC),
     })
     const plan: WaterPlan = { ...ws, targetC: k.targetFdtC, mixerRiseC: mixerRise, classicWaterC: classic }
     return plan
   }
-  const fw0 = finalWater(comp0)
 
-  // Mixing time counts as fermentation at room temperature.
-  const finalSegs: SimSegment[] = []
-  if (finalMixH > 0) finalSegs.push({ envC: finalRoom, hours: finalMixH, pieceMassG: Math.max(200, comp0.dough) })
-  let balled = false
-  let lastPiece = Math.max(200, comp0.dough)
-  let segStart = finalStartH + finalMixH
-  for (const ph of finalPhases) {
-    if ((ph.stage ?? 'bulk') === 'balls') balled = true
-    const piece = balled ? (r.sizing.mode === 'pans' ? Math.min(pw, 300) : pw) : Math.max(200, comp0.dough)
-    finalSegs.push(segFor(ph, segStart, piece))
-    segStart += ph.hours
-    lastPiece = piece
-  }
-  const finalStartC = r.final.measuredMixC ?? fw0.expectedC
-  const fsim = simulate(finalSegs, finalStartC)
-
-  /* ---------------- Final leavening ---------------- */
+  /* ---------------- Final dough fermentation & leavening ---------------- */
   const P = Math.min(1, prefs.reduce((s, p) => s + p.flourPct / 100, 0))
   const required = 1 - P + PREFERMENTED_CREDIT * P
   const mFinal = doughMultiplier({ hydration: r.hydration, saltPct: r.saltPct, oilPct: r.oilPct, sugarPct: r.sugarPct }) * scale
   const target = Math.min(2.5, Math.max(0.5, r.final.proofTarget || 1))
-  const eqNeeded = required > 0 ? fsim.eqHours / (required * target) : Infinity
-
-  // Leavening carried by the preferments: commercial yeast in fresh-yeast equivalents on TOTAL
-  // flour, sourdough as the fraction of the final fermentation its inoculation covers.
-  let carry = 0
-  let sdFraction = 0
-  for (const ps of prefStates) {
-    const p = ps.spec
-    const share = p.flourPct / 100
-    if (p.leavening === 'yeast') {
-      // A ripe preferment carries at least its seed yeast, and grows towards a
-      // ~1 %-fresh-yeast-equivalent population (a classic biga) as it ripens.
-      // Calibrated like every other yeast amount, so the balance doesn't depend on the scale.
-      const floor = prefermentPreset(p.type).carryFreshPct * scale
-      carry += share * Math.max(ps.yeastFreshPct, floor * Math.min(1, ps.ripeness))
-    } else {
-      const levainPct = share * (1 + p.hydration / 100) * 100
-      sdFraction += ((fsim.sdDoublings * speed) / (required * target * doublingsForStarter(levainPct / alt))) * Math.min(1, ps.ripeness)
-    }
-  }
   const manualExtra = r.final.extraYeastMode === 'manual' ? yeastToFresh(r.final.extraYeastPct, r.yeastType) : 0
   const leavenedByStarter = r.method === 'direct' && r.directLeavening === 'sourdough'
-  let directStarterPct = 0
-  if (leavenedByStarter) {
-    // The starter does the work; an optional manual yeast boost reduces the starter needed.
-    const fy = manualExtra > 0 ? eqNeeded / eqHoursForYeast('dough', manualExtra, mFinal) : 0
-    const sdAvail = (fsim.sdDoublings * speed) / target
-    directStarterPct =
-      r.starterMode === 'manual' ? r.starterPct : Math.min(60, starterForDoublings(sdAvail / Math.max(0.05, 1 - fy)) * alt)
-    sdFraction += sdAvail / doublingsForStarter(directStarterPct / alt)
-  }
-  // Total fresh-yeast equivalent the final fermentation still needs after the sourdough share.
-  const yeastNeeded = sdFraction >= 1 ? 0 : yeastForEqHours('dough', eqNeeded / (1 - sdFraction), mFinal)
-  let finalYeastFreshPct = 0
-  if (leavenedByStarter) finalYeastFreshPct = manualExtra
-  else if (r.method === 'direct') finalYeastFreshPct = r.final.extraYeastMode === 'manual' ? manualExtra : yeastNeeded
-  else finalYeastFreshPct = r.final.extraYeastMode === 'auto' ? Math.max(0, yeastNeeded - carry) : manualExtra
+  const makeFinal = (mc: Composition, prefStates: PrefState[]) => {
+    const fw0 = finalWater(mc, prefStates)
 
-  const totalLeaven = carry + finalYeastFreshPct
-  const finalActivity = r.final.activity ?? 1
-  const yeastFraction = (totalLeaven > 0 ? eqNeeded / eqHoursForYeast('dough', totalLeaven, mFinal) : 0) * finalActivity
-  sdFraction *= finalActivity
-  const finalRipeness = yeastFraction + sdFraction
+    // Mixing time counts as fermentation at room temperature.
+    const finalSegs: SimSegment[] = []
+    if (finalMixH > 0) finalSegs.push({ envC: finalRoom, hours: finalMixH, pieceMassG: Math.max(200, mc.dough) })
+    let balled = false
+    let lastPiece = Math.max(200, mc.dough)
+    let segStart = finalStartH + finalMixH
+    for (const ph of finalPhases) {
+      if ((ph.stage ?? 'bulk') === 'balls') balled = true
+      const piece = balled ? (r.sizing.mode === 'pans' ? Math.min(pw, 300) : pw) : Math.max(200, mc.dough)
+      finalSegs.push(segFor(ph, segStart, piece))
+      segStart += ph.hours
+      lastPiece = piece
+    }
+    const finalStartC = r.final.measuredMixC ?? fw0.expectedC
+    const fsim = simulate(finalSegs, finalStartC)
+
+    const eqNeeded = required > 0 ? fsim.eqHours / (required * target) : Infinity
+
+    // Leavening carried by the preferments: commercial yeast in fresh-yeast equivalents on TOTAL
+    // flour, sourdough as the fraction of the final fermentation its inoculation covers.
+    let carry = 0
+    let sdFraction = 0
+    for (const ps of prefStates) {
+      const p = ps.spec
+      const share = p.flourPct / 100
+      if (p.leavening === 'yeast') {
+        // A ripe preferment carries at least its seed yeast, and grows towards a
+        // ~1 %-fresh-yeast-equivalent population (a classic biga) as it ripens.
+        // Calibrated like every other yeast amount, so the balance doesn't depend on the scale.
+        const floor = prefermentPreset(p.type).carryFreshPct * scale
+        carry += share * Math.max(ps.yeastFreshPct, floor * Math.min(1, ps.ripeness))
+      } else {
+        const levainPct = share * (1 + p.hydration / 100) * 100
+        sdFraction += ((fsim.sdDoublings * speed) / (required * target * doublingsForStarter(levainPct / alt))) * Math.min(1, ps.ripeness)
+      }
+    }
+    let directStarterPct = 0
+    if (leavenedByStarter) {
+      // The starter does the work; an optional manual yeast boost reduces the starter needed.
+      const fy = manualExtra > 0 ? eqNeeded / eqHoursForYeast('dough', manualExtra, mFinal) : 0
+      const sdAvail = (fsim.sdDoublings * speed) / target
+      directStarterPct =
+        r.starterMode === 'manual' ? r.starterPct : Math.min(60, starterForDoublings(sdAvail / Math.max(0.05, 1 - fy)) * alt)
+      sdFraction += sdAvail / doublingsForStarter(directStarterPct / alt)
+    }
+    // Total fresh-yeast equivalent the final fermentation still needs after the sourdough share.
+    const yeastNeeded = sdFraction >= 1 ? 0 : yeastForEqHours('dough', eqNeeded / (1 - sdFraction), mFinal)
+    let finalYeastFreshPct = 0
+    if (leavenedByStarter) finalYeastFreshPct = manualExtra
+    else if (r.method === 'direct') finalYeastFreshPct = r.final.extraYeastMode === 'manual' ? manualExtra : yeastNeeded
+    else finalYeastFreshPct = r.final.extraYeastMode === 'auto' ? Math.max(0, yeastNeeded - carry) : manualExtra
+
+    const totalLeaven = carry + finalYeastFreshPct
+    const finalActivity = r.final.activity ?? 1
+    const yeastFraction = (totalLeaven > 0 ? eqNeeded / eqHoursForYeast('dough', totalLeaven, mFinal) : 0) * finalActivity
+    sdFraction *= finalActivity
+    const finalRipeness = yeastFraction + sdFraction
+    return { fsim, finalStartC, lastPiece, carry, sdFraction, directStarterPct, yeastNeeded, finalYeastFreshPct, yeastFraction, finalRipeness }
+  }
+
+  /* ---------------- Fixed point: leavening ⇄ masses ⇄ water ⇄ dough temperatures ---------------- */
+  const planOf = (states: PrefState[], f: ReturnType<typeof makeFinal>): LeaveningPlan => {
+    const plan: LeaveningPlan = { prefs: {}, finalYeastFreshPct: f.finalYeastFreshPct, directStarterPct: f.directStarterPct }
+    for (const ps of states) plan.prefs[ps.spec.id] = { yeastFreshPct: ps.yeastFreshPct, seedPct: ps.seedPct }
+    return plan
+  }
+  const prefWaterWith = (ps: PrefState, mc: Composition) => {
+    const pc = mc.prefs.find((c) => c.id === ps.spec.id)!
+    const masses: ThermalMass[] = [{ label: 'flour', massG: pc.freshFlour, cp: C_FLOUR, tempC: k.flourC ?? ps.roomC }]
+    if (pc.seed > 0) masses.push({ label: 'seed', massG: pc.seed, cp: mixCp(1, ps.spec.seedHydration / 100), tempC: ps.roomC })
+    if (pc.salt > 0) masses.push({ label: 'salt', massG: pc.salt, cp: C_SALT, tempC: ps.roomC })
+    return solveWater({
+      masses,
+      waterG: pc.freshWater,
+      newFlourG: pc.freshFlour,
+      targetC: ps.spec.targetTempC,
+      mixerRiseC: prefRise,
+      tapC: k.tapC,
+    })
+  }
+  let prefStates = makePrefStates(comp0)
+  let fin = makeFinal(comp0, prefStates)
+  let comp = computeComposition(r, planOf(prefStates, fin))
+  for (let pass = 0; pass < 5; pass++) {
+    // Would the real masses change any starting dough temperature? Only then simulate again.
+    const moved =
+      prefStates.some((ps) => ps.spec.measuredMixC == null && Math.abs(prefWaterWith(ps, comp).expectedC - ps.mixC) > 0.02) ||
+      (r.final.measuredMixC == null && Math.abs(finalWater(comp, prefStates).expectedC - fin.finalStartC) > 0.02)
+    if (!moved) break
+    prefStates = makePrefStates(comp)
+    fin = makeFinal(comp, prefStates)
+    comp = computeComposition(r, planOf(prefStates, fin))
+  }
+  const { fsim, lastPiece, carry, yeastNeeded, finalYeastFreshPct, directStarterPct, yeastFraction, finalRipeness } = fin
+  const sdFraction = fin.sdFraction
   const finalRipe = ripenessOf({ eq: ratio(yeastFraction, fsim.eqHours), sd: ratio(sdFraction, fsim.sdDoublings), biga: 0 })
   const finalCurve: CurvePoint[] = fsim.curve.map((c) => ({ t: finalStartH + c.t, doughC: c.doughC, envC: c.envC, ripeness: finalRipe(c) }))
   // Keep going past the bake in the last spot to see how long the dough holds.
@@ -358,28 +401,9 @@ export function computeRecipe(recipe: Recipe, opts: ComputeOptions = {}): Recipe
   const after: CurvePoint[] = hold.curve.map((c) => ({ t: c.t, doughC: c.doughC, envC: c.envC, ripeness: finalRipeness + finalRipe(c) }))
   const window = bakeWindow([...finalCurve, ...after.slice(1)], after)
 
-  /* ---------------- Composition (pass 2) ---------------- */
-  const plan: LeaveningPlan = { prefs: {}, finalYeastFreshPct, directStarterPct }
-  for (const ps of prefStates) plan.prefs[ps.spec.id] = { yeastFreshPct: ps.yeastFreshPct, seedPct: ps.seedPct }
-  const comp = computeComposition(r, plan)
-
-  // Re-solve water with final masses (preferment seeds may have changed).
-  for (const ps of prefStates) {
-    const pc = comp.prefs.find((c) => c.id === ps.spec.id)!
-    const masses: ThermalMass[] = [{ label: 'flour', massG: pc.freshFlour, cp: C_FLOUR, tempC: k.flourC ?? ps.roomC }]
-    if (pc.seed > 0) masses.push({ label: 'seed', massG: pc.seed, cp: mixCp(1, ps.spec.seedHydration / 100), tempC: ps.roomC })
-    if (pc.salt > 0) masses.push({ label: 'salt', massG: pc.salt, cp: C_SALT, tempC: ps.roomC })
-    const ws = solveWater({
-      masses,
-      waterG: pc.freshWater,
-      newFlourG: pc.freshFlour,
-      targetC: ps.spec.targetTempC,
-      mixerRiseC: prefRise,
-      tapC: k.tapC,
-    })
-    ps.water = { ...ps.water!, ...ws }
-  }
-  const fw = finalWater(comp)
+  // Water plans with the final masses (consistent with the simulations once the loop has settled).
+  for (const ps of prefStates) ps.water = { ...ps.water!, ...prefWaterWith(ps, comp) }
+  const fw = finalWater(comp, prefStates)
 
   /* ---------------- Stage results ---------------- */
   const stages: StageResult[] = []

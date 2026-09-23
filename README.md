@@ -66,17 +66,35 @@ licoli + yeast, …), each with its own multi-phase schedule across room, fridge
 
 ## Running it
 
-Needs Node 20.19+ (or 22.12+) and pnpm.
+Needs Node 22.22+ (or 24.15+) and pnpm.
 
 ```sh
 pnpm install
 pnpm dev          # dev server
-pnpm test         # engine unit tests (Vitest)
+pnpm test         # the whole Vitest suite (engine, state and UI)
+pnpm test:watch   # re-run tests as you edit
 pnpm lint         # oxlint
 pnpm build        # type-check + production build into dist/
 pnpm preview      # serve the production build (service worker included)
 pnpm icons        # regenerate PWA icons from public/logo.svg
 ```
+
+### Testing
+
+About 400 Vitest tests, in about 10 seconds. They check the numbers against published targets, not
+just against themselves:
+
+| Suite | What it checks |
+| --- | --- |
+| `engine/targets.test.ts` | Published reference points: Craig's yeast chart, AVPN yeast and salt, MasterBiga timings, the poolish table, Craig's sourdough chart and everyday starter percentages, the heat of hydration, dough-ball cooling times, yeast-type ratios, altitude pressure, AVPN/NY/Detroit toppings and portions. |
+| `engine/invariants.test.ts` | Every style × every leavening method × 16–32 °C kitchens, with and without cool nights: the mass and baker's percentages add up, nothing is NaN, automatic stages are ripe exactly on time, water and ice stay within their limits, the timeline and bake guide are in order, and °F users never see °C. |
+| `engine/presets.test.ts` | The style, oven, flour, schedule, preferment and mixer data is consistent (every reference exists, every default sits in its range, no sugar or oil in a 400 °C+ oven). |
+| `engine/*.test.ts` | Each model on its own: fermentation, thermal lag, water temperature (and the textbook ice rule), units, live re-planning, fitting your day, calibration, pizza night, small quantities. |
+| `state/*.test.ts` | New recipes from every style and method, switching styles, migrating old saves, share links, the store (duplicates, backups, reloads). |
+| `app.test.tsx` | The UI in jsdom: the wizard end to end, every style and method on every tab, editing, the menu, the journal, live tracking, bake mode, import, tools, guides and settings. Any React error fails the test. |
+
+Engine tests run in Node; UI tests opt into jsdom with a `// @vitest-environment jsdom` comment. CI
+(`.github/workflows/ci.yml`) runs lint, the tests and the build on every push and pull request.
 
 ### Deploying
 
@@ -93,7 +111,7 @@ app is then at `https://<user>.github.io/<repo>/`. Open it on your phone and use
 
 ## How the numbers are worked out
 
-The engine is in `src/engine/` and is plain TypeScript with no UI. Tests are in `src/engine/*.test.ts`.
+The engine is in `src/engine/` and is plain TypeScript with no UI. Its tests sit next to it in `src/engine/*.test.ts`.
 
 | What | Model |
 | --- | --- |
@@ -129,6 +147,7 @@ src/
   components/  UI kit, temperature chart, phase editor, stage cards, timeline, weather card
   content/     long-form guides
   lib/         calendar export, time helpers, weather
+  test/        Vitest setup (jsdom stubs, service-worker stand-in)
 public/        icons and logo
 scripts/       icon generation helpers
 ```

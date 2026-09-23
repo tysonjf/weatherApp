@@ -26,7 +26,7 @@ export interface OvenService {
   capacity: number
 }
 
-const SERVICE: Record<string, OvenService> = {
+export const OVEN_SERVICE: Record<string, OvenService> = {
   wood: { bakeSec: 90, turnEverySec: 20, cadenceMin: 3, capacity: 1 },
   portable: { bakeSec: 90, turnEverySec: 20, cadenceMin: 4, capacity: 1 },
   'electric-hot': { bakeSec: 150, turnEverySec: 45, cadenceMin: 6, capacity: 1 },
@@ -36,14 +36,14 @@ const SERVICE: Record<string, OvenService> = {
   deck: { bakeSec: 420, turnEverySec: 0, cadenceMin: 8, capacity: 2 },
   fryer: { bakeSec: 150, turnEverySec: 60, cadenceMin: 4, capacity: 2 },
 }
-export const ovenService = (ovenId: string): OvenService => SERVICE[ovenId] ?? SERVICE['home-steel']
+export const ovenService = (ovenId: string): OvenService => OVEN_SERVICE[ovenId] ?? OVEN_SERVICE['home-steel']
 
 /* ------------------------------------------------------------------ */
 /* Portions                                                            */
 /* ------------------------------------------------------------------ */
 
 /** Dough an adult with a normal appetite eats, by style (g). One Neapolitan pizza ≈ 250 g. */
-const DOUGH_PER_ADULT: Record<string, number> = {
+export const DOUGH_PER_ADULT: Record<string, number> = {
   neapolitan: 250,
   canotto: 270,
   roman: 180,
@@ -121,7 +121,7 @@ const PAN_SAUCE = 'A thick cooked sauce: crushed tomatoes simmered 20–30 min w
 
 const TOMATO_PIE = 'Crushed tomatoes with a little salt, oregano and olive oil; grated Pecorino on top. Mozzarella (“mootz”) is an extra.'
 
-const PROFILES: Record<string, Profile> = {
+export const TOPPING_PROFILES: Record<string, Profile> = {
   'new-haven': {
     basis: 'area',
     doughPerCm2: 0.34,
@@ -380,7 +380,7 @@ const PROFILES: Record<string, Profile> = {
   },
 }
 
-export const toppingProfile = (styleId: string): Profile => PROFILES[styleId] ?? PROFILES.custom
+export const toppingProfile = (styleId: string): Profile => TOPPING_PROFILES[styleId] ?? TOPPING_PROFILES.custom
 
 /** Area of one pizza (cm²). */
 export function pizzaArea(r: Recipe, pieceWeightG: number): number {
