@@ -316,6 +316,19 @@ export const GUIDES: Guide[] = [
           Spiral: 3–5 min first speed + 4–8 min second speed. Fork: gentle, 15–20 min total, low heating — great for
           high-hydration and biga doughs.
         </p>
+        <h3>Autolyse</h3>
+        <p>
+          Mix just the flour and water (hold back ~5 % of the water) and rest 20–45 minutes before adding salt, yeast
+          and preferments. The flour hydrates and gluten forms on its own: less kneading, a more extensible dough — the
+          classic trick for high hydration, whole grain and semola. With yeast already in, it's a “fermentolyse”.
+          Long autolyses (hours) belong in the fridge and need strong flour.
+        </p>
+        <h3>Stretch & folds</h3>
+        <p>
+          For wet doughs, strength comes from folds instead of kneading: 3–4 sets 15–30 minutes apart in the first part
+          of the bulk (teglia and pala 75–85 %: every 15–20 min; focaccia: every 30 min; canotto: 2–3 sets). Wet your
+          hands, lift one side, fold it over, turn the bowl and repeat. The app puts each set in the timeline.
+        </p>
         <h3>Done?</h3>
         <ul>
           <li>Smooth, slightly tacky, springs back slowly; thin translucent membrane when stretched (windowpane).</li>
@@ -401,8 +414,10 @@ export const GUIDES: Guide[] = [
         </div>
         <ul>
           <li>US flours don't list W. All-purpose ≈ W 200–250, bread flour (12.7 %) ≈ W 280–320, high-gluten (14 %) ≈ W 350+.</li>
-          <li>Whole-wheat and type 1/2 flours absorb more water (+3–8 %) and ferment faster (more enzymes and nutrients).</li>
-          <li>Blending is fine: the W of a blend is roughly the weighted average.</li>
+          <li>Whole-wheat and type 1/2 flours absorb more water — roughly +0.1 % hydration for every 1 % of wholemeal in the flour — and ferment 10–25 % faster (more enzymes and nutrients).</li>
+          <li>Blending is fine: protein blends exactly by weight, and the W of a blend is roughly the weighted average (treat it as ±10–15 %). The app does both when you blend in a second flour.</li>
+          <li>Semola rimacinata (re-milled durum) hydrates slowly: give it a 20–30 min autolyse or add the last water late.</li>
+          <li>Italian protein figures are often minimums on a dry basis: 13 % “s.s.” is about 11 % as sold, so compare W, not protein, between Italian and US flours.</li>
         </ul>
       </>
     ),
@@ -523,6 +538,122 @@ export const GUIDES: Guide[] = [
             </tbody>
           </table>
         </div>
+      </>
+    ),
+  },
+  {
+    id: 'live',
+    title: 'Follow your dough (live tracking)',
+    emoji: '📡',
+    summary: 'Measured dough temperature, the sample jar, and re-planning when life happens.',
+    body: (
+      <>
+        <p>
+          A forecast is only as good as its inputs. Once you start, tell the app what really happened and it
+          re-forecasts from there — like a weather model taking in new observations.
+        </p>
+        <h3>1. Mark each mix</h3>
+        <p>
+          In the bake guide, tick the mixing step when you finish kneading. Enter the time and, ideally, the dough
+          temperature from a probe in the middle of the dough. A dough <Delta c={2} /> warmer than planned can finish
+          an hour or more early. The yeast amount is locked in from here and the forecast follows your dough.
+        </p>
+        <h3>2. The sample jar</h3>
+        <p>
+          Right after mixing, drop 20–40 g of dough into a straight-sided jar, press it flat and mark the level. It
+          rises like the dough, but you can read it. 100 % rise means doubled — the model's end point.
+        </p>
+        <ul>
+          <li>Two-stage doughs: ball after about 25–50 % rise in bulk.</li>
+          <li>Neapolitan balls are ready at about 2× (100 %); canotto often 2.5–3×.</li>
+          <li>Cold NY balls: about 1.5–2× once they have warmed up.</li>
+          <li>Read it once it has risen 20–30 %: the first millimetres say little (the app ignores very early readings).</li>
+        </ul>
+        <h3>3. Plans changed?</h3>
+        <p>
+          Guests late, or dinner moved to tomorrow? Pick the new bake time and the app offers ways to land it: move the
+          next step (into or out of the fridge), hold the dough at a steady temperature (fridge, a cool cellar, the oven
+          with just the light on), or bake when it's ready. Every option is simulated — you see the ripeness each one
+          gives at the bake.
+        </p>
+        <h3>The bake window</h3>
+        <p>
+          The forecast shows when the dough bakes well: roughly 85–130 % of the planned fermentation. Slow doughs
+          (little yeast, long times) have a wide window; fast, warm doughs a narrow one. Room-temperature Neapolitan
+          balls stay usable for hours; cold-fermented balls are fine for a day or two extra in the fridge, then warm up.
+        </p>
+      </>
+    ),
+  },
+  {
+    id: 'party',
+    title: 'Pizza night: feeding a crowd',
+    emoji: '🎉',
+    summary: 'How many pizzas, toppings per pizza, oven pace, and staggering the balls.',
+    body: (
+      <>
+        <h3>How many?</h3>
+        <ul>
+          <li>Neapolitan-style: one pizza per adult (250 g ball), half for kids; a spare never goes to waste.</li>
+          <li>Shared pies: plan on ~200 g of dough per adult — an 18″ NY pie (≈ 560 g) feeds about three.</li>
+          <li>Pan pizzas are filling: a 10×14″ Detroit feeds 2–3.</li>
+        </ul>
+        <h3>Toppings</h3>
+        <p>
+          AVPN Neapolitan: 60–80 g of tomato and 80–100 g of fior di latte per pizza, a few basil leaves and a thread of
+          oil. US pizzerias load about 0.15 g of sauce and 0.2 g of cheese per cm² (≈ 170 g and 230 g on a 16″).
+          Detroit takes ≈ 340 g of brick cheese per 10×14″ pan. The Pizza night tab scales all of it and writes the
+          shopping list.
+        </p>
+        <h3>Oven pace</h3>
+        <p>
+          A wood or gas pizza oven turns out a pizza every 3–4 minutes if someone keeps stretching; a home oven with a
+          steel needs 10–15 minutes per pizza including recovery (use the broiler in between). Plan the service length,
+          not just the first pizza.
+        </p>
+        <h3>Stagger the balls</h3>
+        <p>
+          Cold balls need 2–4 hours to warm up. Take them out in waves, every 30 minutes, so the last ball gets the same
+          warm-up as the first instead of sitting out for hours. The app lists the waves and checks how ripe the last
+          pizza will be. Room-temperature balls just keep fermenting: move some to the fridge if the service is long.
+        </p>
+        <h3>Bake mode</h3>
+        <p>A full-screen timer with turn beeps for fast ovens, pizza count and the take-out waves; the screen stays on.</p>
+      </>
+    ),
+  },
+  {
+    id: 'calibrate',
+    title: 'Calibrating to your kitchen',
+    emoji: '🎯',
+    summary: 'Mixer heat, yeast and starter calibration, the journal, altitude and night-time cooling.',
+    body: (
+      <>
+        <p>Models start from averages. Five things make the forecast yours:</p>
+        <h3>1. Mixer heat</h3>
+        <p>Measure one batch (Tools → Mixer calibration): the app back-solves how much heat your mixer adds.</p>
+        <h3>2. The journal</h3>
+        <p>
+          After each bake, log whether it was ready early or late and by how much. Each entry becomes the yeast
+          calibration (or starter speed) that would have been right; after a few bakes the app suggests a value that
+          fits your yeast, flour and kitchen.
+        </p>
+        <h3>3. Starter speed</h3>
+        <p>
+          Starters differ two- to three-fold. Feed yours 1 : 1 : 1, note when it peaks at a known temperature, and enter
+          it in Settings: every sourdough timing then uses your starter's pace.
+        </p>
+        <h3>4. Altitude</h3>
+        <p>
+          Gas expands in thin air: at 1,500 m the same fermentation raises the dough ~20 % more, so the app cuts yeast
+          and starter by the air-pressure ratio (≈ −17 % at 1,500 m) — in line with the 10–25 % rule of thumb.
+        </p>
+        <h3>5. Night-time cooling</h3>
+        <p>
+          Without heating or air-con a kitchen swings 2–5 degrees between late afternoon and dawn. Turn on “the room
+          cools down at night” and the forecast follows the clock; long room-temperature doughs get noticeably more
+          yeast when they ferment overnight.
+        </p>
       </>
     ),
   },
