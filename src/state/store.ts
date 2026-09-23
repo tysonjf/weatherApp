@@ -4,6 +4,7 @@ import type { Recipe } from '../engine/types'
 import type { JournalEntry } from '../engine/calibration'
 import { DEFAULT_SETTINGS, type Settings } from './settings'
 import { migrateRecipe } from './recipes'
+import { resetLive } from '../engine/replan'
 import { uid } from '../engine/phases'
 
 interface AppState {
@@ -106,7 +107,7 @@ export const useStore = create<AppState>()(
         const src = get().recipes[id]
         if (!src) return null
         const copy: Recipe = {
-          ...structuredClone(src),
+          ...resetLive(structuredClone(src)),
           id: uid('r'),
           name: `${src.name} (copy)`,
           createdAt: Date.now(),
