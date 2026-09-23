@@ -10,10 +10,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import type { JournalEntry } from './engine/calibration'
 import { computeRecipe } from './engine/compute'
-import { STYLES } from './engine/presets'
+import { STYLES, scheduleById } from './engine/presets'
 import type { Recipe } from './engine/types'
 import { GUIDES } from './content/guides'
-import { applyMethod, recipeFromStyle, type MethodPreset } from './state/recipes'
+import { applyMethod, makePreferment, recipeFromStyle, type MethodPreset } from './state/recipes'
+import { makePhase } from './engine/phases'
 import { DEFAULT_SETTINGS } from './state/settings'
 import { useStore } from './state/store'
 
@@ -198,6 +199,61 @@ describe('a saved dough', () => {
     // Home shows it in progress.
     renderAt('/')
     expect(screen.getByText('In progress')).toBeTruthy()
+  })
+})
+
+describe('fixes and cold preferments', () => {
+  /** The plan from the bug report: 50 % biga, 2 h room → 22 h fridge, cold balls 24 h, 24 °C kitchen. */
+  function reportedPlan(): Recipe {
+    const s = { ...useStore.getState().settings, roomC: 24 }
+    const r = applyMethod(recipeFromStyle('canotto', s), 'biga', s)
+    return {
+      ...r,
+      preferments: [{ ...makePreferment('biga', 50, s), phases: [makePhase('room', 2), makePhase('fridge', 22)] }],
+      final: { ...r.final, phases: scheduleById('cold-balls-24').phases.map((p) => makePhase(p.location, p.hours, p.stage)) },
+    }
+  }
+
+  it('offers one-tap fixes on the recipe and applying one clears the warning', () => {
+    const r = reportedPlan()
+    const hours = computeRecipe(r).totalHours
+    saved('canotto', undefined, { ...r, id: r.id, bakeAt: new Date(Date.now() + (hours + 3) * 3600000).toISOString() })
+    renderAt(`/recipe/${r.id}`)
+    expect(screen.getByText('The preferments alone will over-ferment this dough')).toBeTruthy()
+    const fixes = screen.getAllByRole('button', { name: /Room first, then the fridge/ })
+    expect(fixes.length).toBeGreaterThan(0)
+    expect(screen.getByRole('button', { name: /Smaller biga/ })).toBeTruthy()
+    fireEvent.click(fixes[0])
+    const biga = useStore.getState().recipes[r.id].preferments[0]
+    expect(biga.phases.map((p) => p.location)).toEqual(['room', 'fridge'])
+    expect(biga.phases[0].hours).toBeGreaterThan(8)
+    expect(screen.queryByText('The preferments alone will over-ferment this dough')).toBeNull()
+  })
+
+  it('applies fixes to the draft in the wizard', () => {
+    useStore.getState().setDraft(reportedPlan())
+    renderAt('/wizard/review')
+    fireEvent.click(screen.getByRole('button', { name: /Shorter final rise/ }))
+    const d = useStore.getState().draft!
+    expect(d.final.phases.reduce((t, p) => t + p.hours, 0)).toBeLessThan(24)
+    expect(screen.queryByText('The preferments alone will over-ferment this dough')).toBeNull()
+  })
+
+  it('a fridge biga rests out of the fridge before the final mix, in the plan and the bake guide', () => {
+    const r = reportedPlan()
+    const hours = computeRecipe(r).totalHours
+    saved('canotto', undefined, { ...r, id: r.id, bakeAt: new Date(Date.now() + (hours + 3) * 3600000).toISOString() })
+    const { unmount } = renderAt(`/recipe/${r.id}?tab=guide`)
+    expect(screen.getAllByText('Take the biga out of the fridge').length).toBeGreaterThan(0)
+    unmount()
+    renderAt(`/recipe/${r.id}?tab=forecast`)
+    expect(screen.getAllByText('Take the biga out of the fridge').length).toBeGreaterThan(0)
+  })
+
+  it('the warmest water is a setting', () => {
+    renderAt('/settings')
+    fireEvent.change(screen.getByLabelText('Warmest water to use'), { target: { value: '27' } })
+    expect(useStore.getState().settings.maxWaterC).toBe(27)
   })
 })
 

@@ -7,7 +7,7 @@ import { SectionTitle } from '../components/ui'
 import { styleById } from '../engine/presets'
 import { computeRecipe } from '../engine/compute'
 import { formatHours, formatWeight } from '../engine/units'
-import { useNow, bakeDateOf, atTime } from '../state/hooks'
+import { useNow, bakeDateOf, atTime, optionsFor } from '../state/hooks'
 import { useSettings, useStore } from '../state/store'
 import { methodLabel } from '../state/recipes'
 import { formatDayClock } from '../lib/time'
@@ -19,19 +19,17 @@ export function HomePage() {
   const journalCount = useStore((s) => s.journal.length)
   const now = useNow(60000)
   const list = useMemo(() => Object.values(recipes).sort((a, b) => b.updatedAt - a.updatedAt), [recipes])
-  const { mixerRise, tempUnit, yeastScale, starterSpeed, altitudeM } = settings
   const computed = useMemo(
     () =>
       list.flatMap((r) => {
         try {
-          const opts = { calibratedRiseC: mixerRise[r.kitchen.mixerId], tempUnit, yeastScale, starterSpeed, altitudeM, bakeAtMs: bakeDateOf(r).getTime() }
-          return [{ r, res: computeRecipe(r, opts) }]
+          return [{ r, res: computeRecipe(r, { ...optionsFor(settings, r), bakeAtMs: bakeDateOf(r).getTime() }) }]
         } catch (e) {
           console.error(e)
           return []
         }
       }),
-    [list, mixerRise, tempUnit, yeastScale, starterSpeed, altitudeM],
+    [list, settings],
   )
 
   const active = computed

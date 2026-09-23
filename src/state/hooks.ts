@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Recipe, RecipeResult } from '../engine/types'
-import { computeRecipe, planDurationH } from '../engine/compute'
+import { computeRecipe, planDurationH, type ComputeOptions } from '../engine/compute'
 import { useSettings } from './store'
+import type { Settings } from './settings'
 import type { DayPlan } from '../engine/schedule'
 import { defaultBakeTime } from '../lib/time'
 
@@ -14,42 +15,41 @@ export function useDayPlan(): DayPlan {
   )
 }
 
-/** The user's calibrations and units as engine options (without the bake time). */
-export function useComputeOptions(recipe: Recipe | null | undefined) {
+/** The user's calibrations, limits and units as engine options (without the bake time). */
+export function optionsFor(settings: Settings, recipe: Recipe | null | undefined): ComputeOptions {
+  return {
+    calibratedRiseC: recipe ? settings.mixerRise[recipe.kitchen.mixerId] : undefined,
+    tempUnit: settings.tempUnit,
+    yeastScale: settings.yeastScale,
+    starterSpeed: settings.starterSpeed,
+    altitudeM: settings.altitudeM,
+    maxWaterC: settings.maxWaterC,
+  }
+}
+
+/** optionsFor, memoised on what it reads. */
+export function useComputeOptions(recipe: Recipe | null | undefined): ComputeOptions {
   const settings = useSettings()
   const rise = recipe ? settings.mixerRise[recipe.kitchen.mixerId] : undefined
+  const { tempUnit, yeastScale, starterSpeed, altitudeM, maxWaterC } = settings
   return useMemo(
-    () => ({
-      calibratedRiseC: rise,
-      tempUnit: settings.tempUnit,
-      yeastScale: settings.yeastScale,
-      starterSpeed: settings.starterSpeed,
-      altitudeM: settings.altitudeM,
-    }),
-    [rise, settings.tempUnit, settings.yeastScale, settings.starterSpeed, settings.altitudeM],
+    () => ({ calibratedRiseC: rise, tempUnit, yeastScale, starterSpeed, altitudeM, maxWaterC }),
+    [rise, tempUnit, yeastScale, starterSpeed, altitudeM, maxWaterC],
   )
 }
 
 /** Runs the whole engine for a recipe with the user's calibrations and units. */
 export function useCompute(recipe: Recipe | null | undefined): RecipeResult | null {
-  const settings = useSettings()
-  const rise = recipe ? settings.mixerRise[recipe.kitchen.mixerId] : undefined
+  const opts = useComputeOptions(recipe)
   return useMemo(() => {
     if (!recipe) return null
     try {
-      return computeRecipe(recipe, {
-        calibratedRiseC: rise,
-        tempUnit: settings.tempUnit,
-        yeastScale: settings.yeastScale,
-        starterSpeed: settings.starterSpeed,
-        altitudeM: settings.altitudeM,
-        bakeAtMs: bakeDateOf(recipe).getTime(),
-      })
+      return computeRecipe(recipe, { ...opts, bakeAtMs: bakeDateOf(recipe).getTime() })
     } catch (e) {
       console.error(e)
       return null
     }
-  }, [recipe, rise, settings.tempUnit, settings.yeastScale, settings.starterSpeed, settings.altitudeM])
+  }, [recipe, opts])
 }
 
 /** The bake time: stored, or the next sensible dinner time that fits the plan. */

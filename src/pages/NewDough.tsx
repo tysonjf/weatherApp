@@ -2,7 +2,7 @@ import { Link, useNavigate } from 'react-router'
 import { TopBar } from '../components/Layout'
 import { Icon } from '../components/Icon'
 import { STYLES, styleById } from '../engine/presets'
-import { applyMethod, recipeFromStyle, type MethodPreset } from '../state/recipes'
+import { newRecipe, type MethodPreset } from '../state/recipes'
 import { useSettings, useStore } from '../state/store'
 
 const QUICK: { label: string; emoji: string; style: string; method?: MethodPreset; sub: string }[] = [
@@ -22,9 +22,7 @@ export function NewDoughPage() {
   const navigate = useNavigate()
 
   const start = (styleId: string, method?: MethodPreset) => {
-    let r = recipeFromStyle(styleId, settings)
-    if (method) r = applyMethod(r, method, settings)
-    setDraft(r)
+    setDraft(newRecipe(styleId, settings, method))
     navigate('/wizard/dough')
   }
 

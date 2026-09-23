@@ -188,6 +188,58 @@ describe('Dough temperature (heat balance)', () => {
   })
 })
 
+describe('Cold preferments meet the final dough without hot water', () => {
+  /** A 50 % biga, 1 h at room then 23 h in the fridge, closed with the given mixer. */
+  const coldBiga = (roomC: number, mixerId: string, pct = 50) => {
+    const s = { ...fresh, roomC, mixerId }
+    const r = recipeFromStyle('canotto', s)
+    r.preferments = [{ ...makePreferment('biga', pct, s), phases: [makePhase('room', 1), makePhase('fridge', 23)] }]
+    return r
+  }
+  const BAKE = new Date(2026, 8, 25, 19, 0).getTime()
+  const run = (r: Recipe, maxWaterC?: number) => {
+    const res = computeRecipe(r, { bakeAtMs: BAKE, maxWaterC })
+    return { biga: res.stages[0], final: res.stages.find((s) => s.id === 'final')! }
+  }
+
+  it('a fridge biga rests out of the fridge 30 min – 3 h (practice: 1–2 h) and the water stays ≤ 30 °C', () => {
+    for (const roomC of [18, 21, 24, 27]) {
+      const { biga, final: f } = run(coldBiga(roomC, 'hand'))
+      expect(biga.temperH, `${roomC} °C`).toBeGreaterThanOrEqual(0.5)
+      expect(biga.temperH, `${roomC} °C`).toBeLessThanOrEqual(3)
+      expect(f.waterPlan!.waterC).toBeLessThanOrEqual(30)
+      // Straight from the fridge it comes out near fridge temperature; the rest warms it.
+      expect(biga.phases.at(-2)!.endDoughC).toBeLessThan(6)
+      expect(biga.endTempC).toBeGreaterThan(biga.phases.at(-2)!.endDoughC + 2)
+      if (f.waterPlan!.status === 'ok') expect(f.mixTempC).toBeCloseTo(24, 1)
+    }
+  })
+
+  it('rests just long enough: warmer water allowed, or a mixer that heats, means a shorter rest', () => {
+    const hand = run(coldBiga(24, 'hand')).biga.temperH
+    expect(run(coldBiga(24, 'hand'), 35).biga.temperH).toBeLessThan(hand)
+    expect(run(coldBiga(24, 'spiral')).biga.temperH).toBeLessThan(hand)
+    // With enough mixer heat and allowed water, it goes straight in.
+    expect(run(coldBiga(27, 'spiral'), 33).biga.temperH).toBe(0)
+  })
+
+  it('when resting is not enough, a spiral mix runs longer (at most half as long again) before the dough is left cooler', () => {
+    const r = coldBiga(14, 'spiral', 100)
+    const { biga, final: f } = run(r)
+    expect(biga.temperH).toBe(3)
+    expect(f.waterPlan!.waterC).toBe(30)
+    expect(f.waterPlan!.extraMixMin).toBeGreaterThan(0)
+    expect(f.waterPlan!.extraMixMin).toBeLessThanOrEqual(Math.round(r.final.mixMinutes / 2))
+    // Every extra minute warms the dough by the mixer's rate.
+    const rate = 3.5 / 18
+    expect(f.waterPlan!.mixerRiseC).toBeCloseTo(3.5 + f.waterPlan!.extraMixMin * rate, 6)
+    // By hand there is no friction to add: it just finishes cooler, and says so.
+    const hand = run(coldBiga(14, 'hand', 100)).final
+    expect(hand.waterPlan!.extraMixMin).toBe(0)
+    expect(hand.mixTempC).toBeLessThan(24)
+  })
+})
+
 describe('Fridge cooling', () => {
   it('a 250 g ball: 24 → 8 °C in a 4 °C fridge in ~3 h', () => {
     const h = hoursToReach(24, 8, 4, 250)

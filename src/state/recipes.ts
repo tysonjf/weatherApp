@@ -4,18 +4,31 @@ import { prefermentPreset, scheduleById, styleById, type StylePreset } from '../
 import { DEFAULT_SETTINGS, type Settings } from './settings'
 import { mixerById } from '../engine/mixers'
 import { computeRecipe } from '../engine/compute'
+import { bigaRoomHours } from '../engine/fermentation'
+import { balanceFixes, balanceNeed } from '../engine/balance'
 import { defaultBakeTime } from '../lib/time'
 
 export function makePreferment(type: PrefermentType, flourPct?: number, settings?: Pick<Settings, 'roomC'>): PrefermentSpec {
   const p = prefermentPreset(type)
   const room = settings?.roomC ?? 21
-  // A biga at 18 °C needs a cool spot; in a warm kitchen default to room→fridge instead.
   let schedule = p.schedule
-  if (type === 'biga' && room >= 24) {
+  let hydration = p.hydration
+  let targetTempC = p.targetTempC
+  // The classic biga wants a cool spot (18 °C). Warmer kitchens follow MasterBiga: up to 26 °C it
+  // matures at room temperature (on less yeast); above 26 °C in two stages, room then fridge, timed
+  // for ~1 % yeast; above 30 °C a 60 % biga goes straight into the fridge.
+  if (type === 'biga' && room > 30) {
+    schedule = [{ location: 'fridge', hours: 24 }]
+    hydration = 60
+    targetTempC = 25
+  } else if (type === 'biga' && room > 26) {
+    const x = bigaRoomHours(room, p.hydration)
     schedule = [
-      { location: 'room', hours: 2 },
-      { location: 'fridge', hours: 22 },
+      { location: 'room', hours: x },
+      { location: 'fridge', hours: 24 - x },
     ]
+  } else if (type === 'biga' && room >= 24) {
+    schedule = [{ location: 'room', hours: 18 }]
   }
   // Overnight poolish at room temperature is the classic; above ~25 °C it races, so use the fridge.
   if (type === 'poolish' && room >= 25) {
@@ -29,7 +42,7 @@ export function makePreferment(type: PrefermentType, flourPct?: number, settings
     type,
     name: p.name,
     flourPct: flourPct ?? p.flourPct,
-    hydration: p.hydration,
+    hydration,
     leavening: p.leavening,
     amountMode: 'auto',
     manualPct: p.leavening === 'sourdough' ? 50 : type === 'biga' ? 0.33 : 0.1,
@@ -37,7 +50,7 @@ export function makePreferment(type: PrefermentType, flourPct?: number, settings
     honeyPct: p.honeyPct,
     seedHydration: p.seedHydration,
     phases: schedule.map((s) => makePhase(s.location, s.hours, undefined, s.customTempC ?? 18)),
-    targetTempC: p.targetTempC,
+    targetTempC,
   }
 }
 
@@ -137,17 +150,35 @@ export function migrateRecipe(input: unknown): Recipe | null {
   return merged
 }
 
+/**
+ * New plans start balanced: when the preferments would over-ferment the final dough (a big biga in a
+ * warm kitchen, say), the final rise is shortened to match — what a pizzaiolo would do.
+ */
+export function autoBalance(r: Recipe): Recipe {
+  if (r.method !== 'indirect') return r
+  const res = computeRecipe(r)
+  if (balanceNeed(r, res) !== 'over') return r
+  const [fix] = balanceFixes(r, res, {}, ['shorter', 'fridge'])
+  return fix ? fix.recipe : r
+}
+
+/** A new dough from a style (and optionally a leavening method), ready to bake on time. */
+export function newRecipe(styleId: string, settings: Settings, method?: MethodPreset): Recipe {
+  const r = recipeFromStyle(styleId, settings)
+  return method ? applyMethod(r, method, settings) : autoBalance(r)
+}
+
 /** Switches a recipe to another style's defaults, keeping the kitchen, yeast type and plan. */
 export function applyStyle(r: Recipe, styleId: string, settings: Settings): Recipe {
   const fresh = recipeFromStyle(styleId, { ...settings, yeastType: r.yeastType, mixerId: r.kitchen.mixerId })
-  return {
+  return autoBalance({
     ...fresh,
     id: r.id,
     createdAt: r.createdAt,
     bakeAt: r.bakeAt,
     notes: r.notes,
     kitchen: { ...r.kitchen, targetFdtC: fresh.kitchen.targetFdtC },
-  }
+  })
 }
 
 export type MethodPreset = 'direct' | 'direct-sourdough' | 'biga' | 'poolish' | 'biga-poolish' | 'levain' | 'custom'
@@ -192,7 +223,7 @@ export function applyMethod(r: Recipe, m: MethodPreset, settings: Pick<Settings,
         preferments: prefs,
         final: { ...r.final, phases: finalPhases, extraYeastMode: m === 'levain' ? 'none' : 'auto' },
       }
-      return m === 'levain' ? sizeLevain(next) : next
+      return m === 'levain' ? sizeLevain(next) : autoBalance(next)
     }
   }
 }

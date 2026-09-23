@@ -7,9 +7,11 @@ import { bakeDateOf, atTime } from '../../state/hooks'
 import { useSettings } from '../../state/store'
 import { formatDayClock } from '../../lib/time'
 import type { StepProps } from './steps'
+import { useAdviceActions } from '../../components/useAdviceActions'
 
 export function StepReview({ recipe, update, result }: StepProps) {
   const settings = useSettings()
+  const action = useAdviceActions(recipe, result, (next) => update(() => next))
   const bake = bakeDateOf(recipe)
   const st = styleById(recipe.styleId)
   const u = settings.tempUnit
@@ -80,7 +82,7 @@ export function StepReview({ recipe, update, result }: StepProps) {
             ))}
           </div>
           <SectionTitle>Forecast notes</SectionTitle>
-          {result.advice.length ? <AdviceList advice={result.advice} /> : <p className="muted">All clear — nothing to watch out for.</p>}
+          {result.advice.length ? <AdviceList advice={result.advice} action={action} /> : <p className="muted">All clear — nothing to watch out for.</p>}
         </>
       )}
     </div>

@@ -23,6 +23,7 @@ import { FitCard } from '../../components/FitCard'
 import { JournalSheet } from '../journal/JournalSheet'
 import { JournalEntryCard } from '../journal/JournalPage'
 import { resetLive } from '../../engine/replan'
+import { useAdviceActions } from '../../components/useAdviceActions'
 
 type Tab = 'recipe' | 'forecast' | 'guide' | 'party' | 'formula'
 
@@ -47,6 +48,7 @@ export function RecipePage() {
   const [logging, setLogging] = useState(false)
   const journal = useStore((s) => s.journal)
   const resetProgress = useStore((s) => s.resetProgress)
+  const action = useAdviceActions(recipe ?? null, result, saveRecipe)
 
   if (!recipe) return <Navigate to="/" replace />
   const tab = (params.get('tab') as Tab) || 'recipe'
@@ -271,7 +273,7 @@ export function RecipePage() {
               </div>
             </div>
             <FitCard recipe={recipe} result={result} bake={bake} onApply={(next) => saveRecipe(next)} />
-            <AdviceList advice={result.advice.filter((a) => a.severity !== 'info')} />
+            <AdviceList advice={result.advice.filter((a) => a.severity !== 'info')} action={action} />
             {result.stages.map((s) => (
               <StageCard key={s.id} stage={s} recipe={recipe} bake={bake} checked={checked} onToggle={(k) => toggleStep(recipe.id, k)} />
             ))}

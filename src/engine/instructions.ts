@@ -24,6 +24,7 @@ const ing = (s: StageResult, key: string) => s.ingredients.find((l) => l.key ===
 
 function phaseSummary(ctx: Ctx, s: StageResult): string {
   return s.phases
+    .filter((p) => !p.temper)
     .map((p) =>
       p.location === 'fridge'
         ? `${formatHours(p.hours)} in the fridge (${ctx.t(p.tempC, 0)})`
@@ -131,7 +132,23 @@ function prefermentSteps(ctx: Ctx, s: StageResult): GuideStep[] {
             'Collapsed, watery and sharp-smelling means it went too far.',
           ]
         : ['Visibly risen and domed, soft and full of small bubbles.']
-  if (s.phases.at(-1)?.location === 'fridge')
+  const rest = s.phases.find((p) => p.temper)
+  if (rest) {
+    const cold = s.phases[s.phases.indexOf(rest) - 1]
+    const from = cold?.location === 'fridge' ? 'fridge' : 'cold'
+    const fw = ctx.res.stages.find((x) => x.id === 'final')?.waterPlan
+    steps.push({
+      key: `${s.id}-temper`,
+      stageId: s.id,
+      title: `Take the ${name} out of the ${from}`,
+      atH: rest.startH,
+      body: [
+        `Leave it covered at room temperature for ${formatHours(rest.hours)} before you mix the final dough. It warms from about ${ctx.t(cold?.endDoughC ?? s.endTempC, 0)} to ${ctx.t(s.endTempC, 0)}.`,
+        `That's what lets the final dough reach ${ctx.t(r.kitchen.targetFdtC, 0)} with water at ${fw && Number.isFinite(fw.waterC) ? ctx.t(fw.waterC) : 'a normal temperature'} instead of hot water.`,
+        'It keeps fermenting while it warms; the plan already counts that. Don’t leave it out much longer.',
+      ],
+    })
+  } else if (s.phases.at(-1)?.location === 'fridge')
     ripe.push(`It will come out cold (≈ ${ctx.t(s.endTempC, 0)}) — the final-dough water temperature already accounts for that.`)
   steps.push({ key: `${s.id}-ripe`, stageId: s.id, title: `Check the ${preset.name.toLowerCase()}`, atH: s.endH, body: ripe })
   return steps
@@ -239,6 +256,11 @@ function finalSteps(ctx: Ctx): GuideStep[] {
   }
   if (reserve) knead.push(`Once the dough is strong, add the held-back ${ctx.w(reserve.grams)} of water a little at a time, waiting until each addition is absorbed.`)
   if (oil) knead.push(`Add ${ctx.w(oil.grams)} olive oil last and mix until it disappears.`)
+  const extra = s.waterPlan?.extraMixMin ?? 0
+  if (extra > 0)
+    knead.push(
+      `Mix about ${extra} minutes longer than usual (${Math.max(1, r.final.mixMinutes) + extra} minutes in all): with the water capped at ${ctx.t(s.waterPlan!.maxWaterC, 0)}, the friction is what warms the dough the rest of the way. Stop early if it is already smooth, strong and warm enough.`,
+    )
   knead.push(`Check the temperature: aim for ${ctx.t(r.kitchen.targetFdtC, 1)} (expected ${ctx.t(s.mixTempC, 1)}). Note the actual value to calibrate your mixer.`)
   knead.push('Done when smooth, slightly tacky and a small piece stretches into a thin, translucent sheet.')
   steps.push({ key: 'final-knead', stageId: 'final', title: 'Knead & develop', atH: startH + 0.1, body: knead })

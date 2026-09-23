@@ -10,6 +10,7 @@ import { bakeDateOf, useNow } from '../../state/hooks'
 import { useSettings } from '../../state/store'
 import { defaultBakeTime, formatDayClock, fromLocalInput, roundUp5, toLocalInput } from '../../lib/time'
 import type { StepProps } from './steps'
+import { useAdviceActions } from '../../components/useAdviceActions'
 
 const TARGETS = [
   { value: '0.8', label: 'Young' },
@@ -20,6 +21,7 @@ const TARGETS = [
 
 export function StepFinal({ recipe, update, result }: StepProps) {
   const settings = useSettings()
+  const action = useAdviceActions(recipe, result, (next) => update(() => next))
   const now = useNow(60000)
   const f = recipe.final
   const setF = (patch: Partial<typeof f>) => update((r) => ({ ...r, final: { ...r.final, ...patch } }))
@@ -273,7 +275,7 @@ export function StepFinal({ recipe, update, result }: StepProps) {
         </div>
       </Details>
 
-      {result && <AdviceList advice={result.advice} scope="final" />}
+      {result && <AdviceList advice={result.advice} scope="final" action={action} />}
     </div>
   )
 }

@@ -148,6 +148,14 @@ export function SettingsPage() {
             maxC={35}
             hint="Below this the app switches to ice."
           />
+          <TempField
+            label="Warmest water to use"
+            valueC={settings.maxWaterC}
+            onChangeC={(maxWaterC) => setSettings({ maxWaterC })}
+            minC={18}
+            maxC={40}
+            hint="Above this, cold preferments rest out of the fridge first and the mix runs a little longer instead."
+          />
           <SelectField
             label="Mixer"
             value={settings.mixerId}
