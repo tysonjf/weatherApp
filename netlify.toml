@@ -1,0 +1,7 @@
+# The repo is also connected to a Netlify site: build the PWA the same way the GitHub Pages workflow does.
+[build]
+  command = "pnpm build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"
