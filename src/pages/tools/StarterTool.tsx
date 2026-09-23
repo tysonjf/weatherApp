@@ -13,8 +13,9 @@ export function StarterTool() {
   const [tempC, setTempC] = useState(settings.roomC)
   const [hours, setHours] = useState(8)
   const D = sdDoublingHours(tempC)
-  const scale = settings.yeastScale
-  const seed = Math.min(2, Math.max(0.02, seedForDoublings(hours / D) * scale))
+  // A slower starter makes fewer doublings in the same time.
+  const speed = settings.starterSpeed
+  const seed = Math.min(2, Math.max(0.02, seedForDoublings((hours / D) * speed)))
   // Build so the final weight covers the need plus ~10 % to keep as the mother.
   const total = needG * 1.1
   const h = hydration / 100
@@ -76,7 +77,7 @@ export function StarterTool() {
                   <td>
                     1 : {formatNumber(1 / s, 0)} : {formatNumber((1 / s) * h, 1)}
                   </td>
-                  <td>{formatHours(doublingsForSeed(s / scale) * D)}</td>
+                  <td>{formatHours((doublingsForSeed(s) * D) / speed)}</td>
                 </tr>
               ))}
             </tbody>

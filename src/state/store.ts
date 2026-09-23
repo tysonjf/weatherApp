@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import type { Recipe } from '../engine/types'
+import type { JournalEntry } from '../engine/calibration'
 import { DEFAULT_SETTINGS, type Settings } from './settings'
 import { migrateRecipe } from './recipes'
 import { uid } from '../engine/phases'
@@ -12,6 +13,10 @@ interface AppState {
   draft: Recipe | null
   /** Bake-mode progress: recipeId → set of completed step keys. */
   progress: Record<string, string[]>
+  /** Bake journal, newest last. */
+  journal: JournalEntry[]
+  addJournal: (e: JournalEntry) => void
+  deleteJournal: (id: string) => void
   setSettings: (patch: Partial<Settings>) => void
   setDraft: (recipe: Recipe | null) => void
   updateDraft: (fn: (r: Recipe) => Recipe) => void
@@ -29,6 +34,9 @@ export const useStore = create<AppState>()(
       recipes: {},
       draft: null,
       progress: {},
+      journal: [],
+      addJournal: (e) => set((s) => ({ journal: [...s.journal, e] })),
+      deleteJournal: (id) => set((s) => ({ journal: s.journal.filter((e) => e.id !== id) })),
       setSettings: (patch) => set((s) => ({ settings: { ...s.settings, ...patch } })),
       setDraft: (recipe) => set({ draft: recipe }),
       updateDraft: (fn) =>
@@ -86,6 +94,7 @@ export const useStore = create<AppState>()(
           ...p,
           settings: { ...DEFAULT_SETTINGS, ...(p.settings ?? {}) },
           recipes,
+          journal: Array.isArray(p.journal) ? p.journal : [],
           draft: p.draft ? migrateRecipe(p.draft) : null,
         }
       },

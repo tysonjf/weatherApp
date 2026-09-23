@@ -169,6 +169,13 @@ export function markMixed(r: Recipe, res: RecipeResult, stageId: string, atMs: n
 
 const firstLive = (phases: Phase[]) => Math.max(0, phases.findIndex((p) => p.hours > 0))
 
+/** Clears everything live about a recipe so it can be baked again from a fresh plan. */
+export function resetLive(r: Recipe): Recipe {
+  let next = r
+  for (const id of Object.keys(r.live?.mixed ?? {})) next = unmarkMixed(next, id)
+  return { ...next, live: undefined, bakeAt: null }
+}
+
 /** Undoes markMixed for a stage: the amounts go back to automatic and the measurements are dropped. */
 export function unmarkMixed(r: Recipe, stageId: string): Recipe {
   const mixed = { ...(r.live?.mixed ?? {}) }

@@ -21,8 +21,12 @@ export interface Settings {
   mixerRise: Record<string, number>
   /** Show the classic bakers' DDT formula alongside the physics-based water temperature. */
   showClassicDdt: boolean
-  /** Personal calibration on every computed yeast / starter amount (1 = model as-is). */
+  /** Personal calibration on every computed commercial-yeast amount (1 = model as-is). */
   yeastScale: number
+  /** How fast your starter is compared with the model (1 = as modelled, 0.8 = 25 % slower). */
+  starterSpeed: number
+  /** Altitude of your kitchen in metres. */
+  altitudeM: number
   /** My day: no hands-on steps while asleep (local hours; may wrap past midnight) or at work. */
   sleepFrom: number
   sleepTo: number
@@ -45,6 +49,8 @@ export const DEFAULT_SETTINGS: Settings = {
   mixerRise: {},
   showClassicDdt: false,
   yeastScale: 1,
+  starterSpeed: 1,
+  altitudeM: 0,
   sleepFrom: 23,
   sleepTo: 7,
   workOn: false,

@@ -1,4 +1,10 @@
+import { useState } from 'react'
+import { Link } from 'react-router'
 import { TopBar } from '../components/Layout'
+import { CalibrationCard } from './journal/CalibrationCard'
+import { doublingsForSeed, sdDoublingHours } from '../engine/fermentation'
+import { pressureRatio } from '../engine/altitude'
+import { formatHours } from '../engine/units'
 import { ClockField, NumberField, Segmented, SelectField, Switch, TempDeltaField, TempField } from '../components/fields'
 import { SectionTitle } from '../components/ui'
 import { MIXERS, mixerById } from '../engine/mixers'
@@ -9,6 +15,10 @@ import { useSettings, useStore } from '../state/store'
 
 export function SettingsPage() {
   const settings = useSettings()
+  const [peakH, setPeakH] = useState(5)
+  const [peakC, setPeakC] = useState(24)
+  const modelPeak = doublingsForSeed(1) * sdDoublingHours(peakC)
+  const measuredSpeed = Math.min(3, Math.max(0.3, modelPeak / Math.max(0.5, peakH)))
   const setSettings = useStore((s) => s.setSettings)
   const mixer = mixerById(settings.mixerId)
   const calibrated = settings.mixerRise[mixer.id]
@@ -125,6 +135,20 @@ export function SettingsPage() {
               Reset to typical value
             </button>
           )}
+          <Switch
+            label="Show classic DDT formula"
+            hint="Also show the bakers' 3×/4× friction-factor answer next to the heat-balance water temperature."
+            checked={settings.showClassicDdt}
+            onChange={(showClassicDdt) => setSettings({ showClassicDdt })}
+          />
+        </div>
+
+        <SectionTitle>Calibration</SectionTitle>
+        <div className="card stack">
+          <p className="muted small" style={{ margin: 0 }}>
+            The forecast learns from your <Link to="/journal">bake journal</Link>: log when the dough was really ready
+            and it suggests these for you.
+          </p>
           <NumberField
             label="Yeast calibration"
             value={Math.round(settings.yeastScale * 100)}
@@ -134,14 +158,58 @@ export function SettingsPage() {
             min={50}
             max={200}
             decimals={0}
-            hint="100 % = the model as is. If your doughs are consistently slow, raise it (e.g. 120 %); if they over-proof, lower it. Applies to every yeast and starter amount."
+            hint="100 % = the model as is. If your yeasted doughs are consistently slow, raise it (e.g. 120 %); if they over-proof, lower it."
           />
-          <Switch
-            label="Show classic DDT formula"
-            hint="Also show the bakers' 3×/4× friction-factor answer next to the heat-balance water temperature."
-            checked={settings.showClassicDdt}
-            onChange={(showClassicDdt) => setSettings({ showClassicDdt })}
+          <NumberField
+            label="Starter speed"
+            value={Math.round(settings.starterSpeed * 100)}
+            onChange={(v) => setSettings({ starterSpeed: v / 100 })}
+            unit="%"
+            step={5}
+            min={30}
+            max={300}
+            decimals={0}
+            hint="How lively your sourdough starter is compared with the model: 80 % means it takes 25 % longer to rise."
           />
+          <details className="details">
+            <summary>Measure your starter</summary>
+            <div className="details-body stack-sm">
+              <p className="muted small" style={{ margin: 0 }}>
+                Feed it 1 : 1 : 1 (starter : flour : water), keep it somewhere steady and note when it peaks (domed, about
+                to fall).
+              </p>
+              <div className="grid-2">
+                <NumberField label="It peaked after" value={peakH} onChange={setPeakH} unit="h" step={0.5} min={1} max={24} decimals={1} />
+                <TempField label="At about" valueC={peakC} onChangeC={setPeakC} minC={10} maxC={35} />
+              </div>
+              <div className="row between wrap">
+                <span className="small">
+                  The model expects {formatHours(modelPeak)} → speed <b>{Math.round(measuredSpeed * 100)} %</b>
+                </span>
+                <button className="btn soft sm" onClick={() => setSettings({ starterSpeed: Math.round(measuredSpeed * 100) / 100 })}>
+                  Use it
+                </button>
+              </div>
+            </div>
+          </details>
+          <NumberField
+            label="Altitude"
+            value={settings.altitudeM}
+            onChange={(altitudeM) => setSettings({ altitudeM })}
+            unit="m"
+            step={100}
+            min={-400}
+            max={5000}
+            decimals={0}
+            hint={
+              settings.altitudeM > 300
+                ? `Thinner air: dough rises on ${Math.round((1 - pressureRatio(settings.altitudeM)) * 100)} % less fermentation, so yeast and starter are cut to match.`
+                : 'Above ~1,000 m dough rises faster on the same yeast; the app corrects for it.'
+            }
+          />
+        </div>
+        <div style={{ marginTop: 12 }}>
+          <CalibrationCard />
         </div>
 
         <SectionTitle>My day</SectionTitle>

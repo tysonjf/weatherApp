@@ -19,8 +19,14 @@ export function useComputeOptions(recipe: Recipe | null | undefined) {
   const settings = useSettings()
   const rise = recipe ? settings.mixerRise[recipe.kitchen.mixerId] : undefined
   return useMemo(
-    () => ({ calibratedRiseC: rise, tempUnit: settings.tempUnit, yeastScale: settings.yeastScale }),
-    [rise, settings.tempUnit, settings.yeastScale],
+    () => ({
+      calibratedRiseC: rise,
+      tempUnit: settings.tempUnit,
+      yeastScale: settings.yeastScale,
+      starterSpeed: settings.starterSpeed,
+      altitudeM: settings.altitudeM,
+    }),
+    [rise, settings.tempUnit, settings.yeastScale, settings.starterSpeed, settings.altitudeM],
   )
 }
 
@@ -35,13 +41,15 @@ export function useCompute(recipe: Recipe | null | undefined): RecipeResult | nu
         calibratedRiseC: rise,
         tempUnit: settings.tempUnit,
         yeastScale: settings.yeastScale,
+        starterSpeed: settings.starterSpeed,
+        altitudeM: settings.altitudeM,
         bakeAtMs: bakeDateOf(recipe).getTime(),
       })
     } catch (e) {
       console.error(e)
       return null
     }
-  }, [recipe, rise, settings.tempUnit, settings.yeastScale])
+  }, [recipe, rise, settings.tempUnit, settings.yeastScale, settings.starterSpeed, settings.altitudeM])
 }
 
 /** The bake time: stored, or the next sensible dinner time that fits the plan. */

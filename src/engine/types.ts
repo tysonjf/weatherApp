@@ -277,6 +277,8 @@ export interface StageResult {
   waterPlan: WaterPlan | null
   /** Equivalent hours at 20 °C (fermentation load). */
   equivalentHours20: number
+  /** Raw fermentation clocks over the stage: yeast hours at 21 °C and sourdough doublings (model speed). */
+  clocks: { eqHours21: number; sdDoublings: number }
   /** Simulated dough temperature over this stage (hours relative to bake). */
   curve: CurvePoint[]
 }

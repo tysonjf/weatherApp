@@ -213,6 +213,12 @@ function sizeLevain(r: Recipe): Recipe {
   return withPct(Math.round((lo + hi) / 2 * 2) / 2)
 }
 
+/** Short description of how a recipe is leavened, e.g. "Biga 30% + Poolish 20%". */
+export function methodLabel(r: Recipe): string {
+  if (r.method === 'direct') return r.directLeavening === 'sourdough' ? 'Direct sourdough' : 'Direct'
+  return r.preferments.map((p) => `${prefermentPreset(p.type).name} ${Math.round(p.flourPct)}%`).join(' + ')
+}
+
 export function methodOf(r: Recipe): MethodPreset {
   if (r.method === 'direct') return r.directLeavening === 'sourdough' ? 'direct-sourdough' : 'direct'
   const types = r.preferments.map((p) => p.type).sort().join('+')

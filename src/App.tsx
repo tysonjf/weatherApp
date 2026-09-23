@@ -16,6 +16,7 @@ import { YeastTableTool } from './pages/tools/YeastTableTool'
 import { CalibrateTool } from './pages/tools/CalibrateTool'
 import { PanTool } from './pages/tools/PanTool'
 import { StarterTool } from './pages/tools/StarterTool'
+import { JournalPage } from './pages/journal/JournalPage'
 
 export default function App() {
   return (
@@ -38,6 +39,7 @@ export default function App() {
         <Route path="tools/pan" element={<PanTool />} />
         <Route path="tools/starter" element={<StarterTool />} />
         <Route path="settings" element={<SettingsPage />} />
+        <Route path="journal" element={<JournalPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

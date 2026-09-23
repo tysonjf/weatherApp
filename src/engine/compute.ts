@@ -46,6 +46,7 @@ import {
   type SimSegment,
 } from './fermentation'
 import { roomTempAt } from './ambient'
+import { pressureRatio } from './altitude'
 import { YEAST_SHORT, yeastFromFresh, yeastToFresh } from './yeastTypes'
 import { buildTimeline } from './timeline'
 import { formatHours, formatPct, formatTemp, formatWeight, localizeTemps, type TempUnit } from './units'
@@ -57,6 +58,10 @@ export interface ComputeOptions {
   tempUnit?: TempUnit
   /** Personal yeast calibration: >1 if doughs usually run slow, <1 if fast. */
   yeastScale?: number
+  /** Starter speed: 1 = the model; 0.8 = your starter doubles 25 % slower. */
+  starterSpeed?: number
+  /** Altitude (m): thinner air lets dough rise on less fermentation. */
+  altitudeM?: number
   /** Bake time (epoch ms); needed for clock-dependent effects such as a room that cools at night. */
   bakeAtMs?: number
 }
@@ -110,6 +115,7 @@ interface PrefState {
   mixC: number
   endC: number
   eqH: number
+  sdD: number
   phases: ResolvedPhase[]
   water: WaterPlan | null
   curve: CurvePoint[]
@@ -124,7 +130,10 @@ const ratio = (a: number, b: number) => (b > 0 ? a / b : 0)
 export function computeRecipe(recipe: Recipe, opts: ComputeOptions = {}): RecipeResult {
   const r = recipe
   const u = opts.tempUnit ?? 'C'
-  const scale = Math.min(3, Math.max(0.3, opts.yeastScale ?? 1))
+  const alt = pressureRatio(opts.altitudeM ?? 0)
+  // Commercial yeast amounts; starter strength works on time (doublings), not amount.
+  const scale = Math.min(3, Math.max(0.3, opts.yeastScale ?? 1)) * alt
+  const speed = Math.min(3, Math.max(0.3, opts.starterSpeed ?? 1))
   const k = r.kitchen
   const mixer = mixerById(k.mixerId)
   const mixerRise = k.mixerRiseC ?? opts.calibratedRiseC ?? mixer.riseC
@@ -191,8 +200,9 @@ export function computeRecipe(recipe: Recipe, opts: ComputeOptions = {}): Recipe
       yeastFreshPct = res.y
       ripeness = res.ripeness
     } else {
-      seedPct = p.amountMode === 'manual' ? p.manualPct : Math.min(200, seedForDoublings(sim.sdDoublings) * 100 * scale)
-      ripeness = sim.sdDoublings / doublingsForSeed(seedPct / 100 / scale)
+      const d = sim.sdDoublings * speed
+      seedPct = p.amountMode === 'manual' ? p.manualPct : Math.min(200, seedForDoublings(d) * 100 * alt)
+      ripeness = d / doublingsForSeed(seedPct / 100 / alt)
     }
     ripeness *= activity
     // Place phases on the bake-relative clock.
@@ -227,6 +237,7 @@ export function computeRecipe(recipe: Recipe, opts: ComputeOptions = {}): Recipe
       mixC: startC,
       endC: sim.endC,
       eqH: sim.eqHours,
+      sdD: sim.sdDoublings,
       phases: resolved,
       water,
       curve: sim.curve.map((c) => ({ t: startH + c.t, doughC: c.doughC, envC: c.envC, ripeness: ripe(c) })),
@@ -309,7 +320,7 @@ export function computeRecipe(recipe: Recipe, opts: ComputeOptions = {}): Recipe
       carry += share * Math.max(ps.yeastFreshPct, floor * Math.min(1, ps.ripeness))
     } else {
       const levainPct = share * (1 + p.hydration / 100) * 100
-      sdFraction += (fsim.sdDoublings / (required * target * doublingsForStarter(levainPct / scale))) * Math.min(1, ps.ripeness)
+      sdFraction += ((fsim.sdDoublings * speed) / (required * target * doublingsForStarter(levainPct / alt))) * Math.min(1, ps.ripeness)
     }
   }
   const manualExtra = r.final.extraYeastMode === 'manual' ? yeastToFresh(r.final.extraYeastPct, r.yeastType) : 0
@@ -318,10 +329,10 @@ export function computeRecipe(recipe: Recipe, opts: ComputeOptions = {}): Recipe
   if (leavenedByStarter) {
     // The starter does the work; an optional manual yeast boost reduces the starter needed.
     const fy = manualExtra > 0 ? eqNeeded / eqHoursForYeast('dough', manualExtra, mFinal) : 0
-    const sdAvail = fsim.sdDoublings / target
+    const sdAvail = (fsim.sdDoublings * speed) / target
     directStarterPct =
-      r.starterMode === 'manual' ? r.starterPct : Math.min(60, starterForDoublings(sdAvail / Math.max(0.05, 1 - fy)) * scale)
-    sdFraction += sdAvail / doublingsForStarter(directStarterPct / scale)
+      r.starterMode === 'manual' ? r.starterPct : Math.min(60, starterForDoublings(sdAvail / Math.max(0.05, 1 - fy)) * alt)
+    sdFraction += sdAvail / doublingsForStarter(directStarterPct / alt)
   }
   // Total fresh-yeast equivalent the final fermentation still needs after the sourdough share.
   const yeastNeeded = sdFraction >= 1 ? 0 : yeastForEqHours('dough', eqNeeded / (1 - sdFraction), mFinal)
@@ -446,6 +457,7 @@ export function computeRecipe(recipe: Recipe, opts: ComputeOptions = {}): Recipe
       endTempC: ps.endC,
       waterPlan: ps.water,
       equivalentHours20: ps.eqH * (rateAt(REF_C) / rateAt(20)),
+      clocks: { eqHours21: ps.eqH, sdDoublings: ps.sdD },
       curve: ps.curve,
     })
   }
@@ -552,6 +564,7 @@ export function computeRecipe(recipe: Recipe, opts: ComputeOptions = {}): Recipe
     endTempC: fsim.endC,
     waterPlan: fw,
     equivalentHours20: fsim.eqHours * (rateAt(REF_C) / rateAt(20)),
+    clocks: { eqHours21: fsim.eqHours, sdDoublings: fsim.sdDoublings },
     curve: finalCurve,
   })
 
@@ -571,7 +584,7 @@ export function computeRecipe(recipe: Recipe, opts: ComputeOptions = {}): Recipe
   }
   waterNotes.final = `${waterNote(fw, comp.final.water)} Aim for a dough at ${formatTemp(k.targetFdtC, u)} when kneading ends.`
   const feedLead: Record<string, number> = {}
-  const oneToOneH = doublingsForSeed(1) * sdDoublingHours(k.roomC)
+  const oneToOneH = (doublingsForSeed(1) * sdDoublingHours(k.roomC)) / speed
   for (const ps of prefStates) if (ps.spec.leavening === 'sourdough') feedLead[ps.spec.id] = oneToOneH
   const timeline = buildTimeline(
     {

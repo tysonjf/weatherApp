@@ -6,6 +6,7 @@ import { doughMultiplier, rateAt, yeastForEqHours } from '../../engine/fermentat
 import { formatTemp } from '../../engine/units'
 import { YEAST_LABEL, yeastFromFresh } from '../../engine/yeastTypes'
 import { useSettings } from '../../state/store'
+import { pressureRatio } from '../../engine/altitude'
 
 const HOURS = [2, 3, 4, 6, 8, 10, 12, 16, 20, 24, 36, 48, 72]
 const TEMPS = [4, 8, 12, 16, 18, 20, 22, 24, 26, 28, 30]
@@ -24,7 +25,7 @@ export function YeastTableTool() {
   const [yType, setYType] = useState<YeastType>(settings.yeastType)
   const [hydration, setHydration] = useState(63)
   const [salt, setSalt] = useState(2.8)
-  const m = doughMultiplier({ hydration, saltPct: salt, oilPct: 0, sugarPct: 0 }) * settings.yeastScale
+  const m = doughMultiplier({ hydration, saltPct: salt, oilPct: 0, sugarPct: 0 }) * settings.yeastScale * pressureRatio(settings.altitudeM)
   const logMin = Math.log(0.002)
   const logMax = Math.log(5)
   const shade = (v: number) => {

@@ -4,37 +4,34 @@ import { TopBar } from '../components/Layout'
 import { Icon } from '../components/Icon'
 import { WeatherCard } from '../components/WeatherCard'
 import { SectionTitle } from '../components/ui'
-import { styleById, prefermentPreset } from '../engine/presets'
-import type { Recipe } from '../engine/types'
+import { styleById } from '../engine/presets'
 import { computeRecipe } from '../engine/compute'
 import { formatHours, formatWeight } from '../engine/units'
 import { useNow, bakeDateOf, atTime } from '../state/hooks'
 import { useSettings, useStore } from '../state/store'
+import { methodLabel } from '../state/recipes'
 import { formatDayClock } from '../lib/time'
 
-function methodLabel(r: Recipe): string {
-  if (r.method === 'direct') return r.directLeavening === 'sourdough' ? 'Direct sourdough' : 'Direct'
-  return r.preferments.map((p) => `${prefermentPreset(p.type).name} ${Math.round(p.flourPct)}%`).join(' + ')
-}
 
 export function HomePage() {
   const settings = useSettings()
   const recipes = useStore((s) => s.recipes)
+  const journalCount = useStore((s) => s.journal.length)
   const now = useNow(60000)
   const list = useMemo(() => Object.values(recipes).sort((a, b) => b.updatedAt - a.updatedAt), [recipes])
-  const { mixerRise, tempUnit, yeastScale } = settings
+  const { mixerRise, tempUnit, yeastScale, starterSpeed, altitudeM } = settings
   const computed = useMemo(
     () =>
       list.flatMap((r) => {
         try {
-          const opts = { calibratedRiseC: mixerRise[r.kitchen.mixerId], tempUnit, yeastScale, bakeAtMs: bakeDateOf(r).getTime() }
+          const opts = { calibratedRiseC: mixerRise[r.kitchen.mixerId], tempUnit, yeastScale, starterSpeed, altitudeM, bakeAtMs: bakeDateOf(r).getTime() }
           return [{ r, res: computeRecipe(r, opts) }]
         } catch (e) {
           console.error(e)
           return []
         }
       }),
-    [list, mixerRise, tempUnit, yeastScale],
+    [list, mixerRise, tempUnit, yeastScale, starterSpeed, altitudeM],
   )
 
   const active = computed
@@ -103,6 +100,19 @@ export function HomePage() {
         )}
 
         <WeatherCard />
+
+        {journalCount > 0 && (
+          <Link to="/journal" className="recipe-item">
+            <span className="ri-emoji">📓</span>
+            <span className="grow">
+              <div className="ri-title">Bake journal</div>
+              <div className="ri-sub">
+                {journalCount} bake{journalCount > 1 ? 's' : ''} logged — the forecast learns from them
+              </div>
+            </span>
+            <Icon name="chevronRight" />
+          </Link>
+        )}
 
         <SectionTitle>My doughs</SectionTitle>
         {list.length === 0 ? (

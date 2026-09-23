@@ -9,7 +9,7 @@ import { useSettings } from '../../state/store'
 import { SectionTitle } from '../../components/ui'
 
 export function FormulaTab({ recipe, result }: { recipe: Recipe; result: RecipeResult }) {
-  const { weightUnit: wu, tempUnit: u, yeastScale } = useSettings()
+  const { weightUnit: wu, tempUnit: u, yeastScale, starterSpeed, altitudeM } = useSettings()
   const t = result.totals
   const F = t.flour
   const rows: [string, number][] = [
@@ -140,6 +140,18 @@ export function FormulaTab({ recipe, result }: { recipe: Recipe; result: RecipeR
             <>
               <span>Your yeast calibration</span>
               <span>{Math.round(yeastScale * 100)} % (Settings)</span>
+            </>
+          )}
+          {starterSpeed !== 1 && (
+            <>
+              <span>Your starter speed</span>
+              <span>{Math.round(starterSpeed * 100)} % (Settings)</span>
+            </>
+          )}
+          {altitudeM > 300 && (
+            <>
+              <span>Altitude</span>
+              <span>{altitudeM} m (Settings)</span>
             </>
           )}
           <span>Mixer heat ({mixer.name})</span>

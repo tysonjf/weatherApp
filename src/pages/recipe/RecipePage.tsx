@@ -19,6 +19,9 @@ import { GuideTab } from './GuideTab'
 import { FormulaTab } from './FormulaTab'
 import { LiveCard } from './LiveCard'
 import { FitCard } from '../../components/FitCard'
+import { JournalSheet } from '../journal/JournalSheet'
+import { JournalEntryCard } from '../journal/JournalPage'
+import { resetLive } from '../../engine/replan'
 
 type Tab = 'recipe' | 'forecast' | 'guide' | 'formula'
 
@@ -40,6 +43,9 @@ export function RecipePage() {
   const [toast, setToast] = useState<string | null>(null)
   const checked = useMemo(() => new Set(progress ?? []), [progress])
   const [chartStage, setChartStage] = useState('final')
+  const [logging, setLogging] = useState(false)
+  const journal = useStore((s) => s.journal)
+  const resetProgress = useStore((s) => s.resetProgress)
 
   if (!recipe) return <Navigate to="/" replace />
   const tab = (params.get('tab') as Tab) || 'recipe'
@@ -88,6 +94,15 @@ export function RecipePage() {
     setMenu(false)
   }
   const update = (patch: Partial<typeof recipe>) => saveRecipe({ ...recipe, ...patch })
+  const bakes = journal.filter((e) => e.recipeId === recipe.id).sort((a, b) => b.bakedAt - a.bakedAt)
+  const logged = bakes.some((e) => Math.abs(e.bakedAt - bake.getTime()) < 12 * 3600000)
+  const bakeDue = now.getTime() >= bake.getTime() - 30 * 60000
+  const bakeAgain = () => {
+    saveRecipe(resetLive(recipe))
+    resetProgress(recipe.id)
+    setMenu(false)
+    flash('Fresh plan ready')
+  }
 
   return (
     <>
@@ -150,6 +165,31 @@ export function RecipePage() {
         )}
 
         {result && <LiveCard recipe={recipe} result={result} bake={bake} now={now} />}
+
+        {result && bakeDue && (
+          <div className="card" style={{ marginTop: 12 }}>
+            {logged ? (
+              <div className="row between wrap">
+                <span>📓 Logged in your journal.</span>
+                <button className="btn soft sm" onClick={bakeAgain}>
+                  <Icon name="refresh" size={16} /> Bake it again
+                </button>
+              </div>
+            ) : (
+              <div className="row between wrap">
+                <span>
+                  <b>How did it go?</b>
+                  <span className="muted small" style={{ display: 'block' }}>
+                    A 20-second note makes the next forecast better.
+                  </span>
+                </span>
+                <button className="btn primary sm" onClick={() => setLogging(true)}>
+                  <Icon name="star" size={16} /> Log this bake
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
         {late && !Object.keys(recipe.live?.mixed ?? {}).length && (
           <div style={{ marginTop: 12 }}>
@@ -234,6 +274,14 @@ export function RecipePage() {
               <StageCard key={s.id} stage={s} recipe={recipe} bake={bake} checked={checked} onToggle={(k) => toggleStep(recipe.id, k)} />
             ))}
             <p className="muted small center">Tap an ingredient to tick it off as you weigh it.</p>
+            {bakes.length > 0 && (
+              <>
+                <h3 style={{ margin: '8px 0 0' }}>Past bakes</h3>
+                {bakes.map((e) => (
+                  <JournalEntryCard key={e.id} e={e} showRecipe={false} />
+                ))}
+              </>
+            )}
             {recipe.notes && (
               <div className="card soft">
                 <h4>Notes</h4>
@@ -315,6 +363,20 @@ export function RecipePage() {
           <button className="btn block" onClick={share}>
             <Icon name="share" /> Share link
           </button>
+          {result && (
+            <button
+              className="btn block"
+              onClick={() => {
+                setMenu(false)
+                setLogging(true)
+              }}
+            >
+              <Icon name="star" /> Log a bake in the journal
+            </button>
+          )}
+          <button className="btn block" onClick={bakeAgain}>
+            <Icon name="refresh" /> Start over with a fresh plan
+          </button>
           <button
             className="btn block danger"
             onClick={() => {
@@ -328,6 +390,7 @@ export function RecipePage() {
           </button>
         </div>
       </Sheet>
+      {logging && result && <JournalSheet recipe={recipe} result={result} bake={bake} onClose={() => setLogging(false)} />}
       {toast && (
         <div className="toast" role="status">
           {toast}

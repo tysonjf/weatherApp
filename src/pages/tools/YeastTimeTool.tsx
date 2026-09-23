@@ -19,6 +19,7 @@ import {
 import { formatHours, formatNumber, formatPct, formatTemp } from '../../engine/units'
 import { YEAST_LABEL, yeastFromFresh, yeastToFresh } from '../../engine/yeastTypes'
 import { useSettings } from '../../state/store'
+import { pressureRatio } from '../../engine/altitude'
 
 type Kind = 'dough' | 'biga' | 'poolish'
 
@@ -38,7 +39,7 @@ export function YeastTimeTool() {
   const [constC, setConstC] = useState(21)
   const kitchen = { roomC, fridgeC }
   const u = settings.tempUnit
-  const scale = settings.yeastScale
+  const scale = settings.yeastScale * pressureRatio(settings.altitudeM)
 
   const effHydration = kind === 'poolish' ? 100 : kind === 'biga' ? Math.min(60, hydration) : hydration
   const sim = useMemo(
