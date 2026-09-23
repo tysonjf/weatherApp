@@ -244,7 +244,8 @@ export function computeRecipe(recipe: Recipe, opts: ComputeOptions = {}): Recipe
     if (p.leavening === 'yeast') {
       // A ripe preferment carries at least its seed yeast, and grows towards a
       // ~1 %-fresh-yeast-equivalent population (a classic biga) as it ripens.
-      const floor = prefermentPreset(p.type).carryFreshPct
+      // Calibrated like every other yeast amount, so the balance doesn't depend on the scale.
+      const floor = prefermentPreset(p.type).carryFreshPct * scale
       carry += share * Math.max(ps.yeastFreshPct, floor * Math.min(1, ps.ripeness))
     } else {
       const levainPct = share * (1 + p.hydration / 100) * 100

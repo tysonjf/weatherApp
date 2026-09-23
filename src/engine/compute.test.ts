@@ -111,6 +111,12 @@ describe('biga + poolish (research worked example)', () => {
     expect(stage(res, 'final').leavening.freshPct).toBeLessThan(0.15)
   })
 
+  it('keeps the final balance when the yeast calibration changes', () => {
+    const ripeness = (scale: number) => stage(computeRecipe(recipe(), { yeastScale: scale }), 'final').ripeness
+    expect(ripeness(1.25)).toBeCloseTo(ripeness(1), 6)
+    expect(ripeness(0.8)).toBeCloseTo(ripeness(1), 6)
+  })
+
   it('schedules both preferments to finish at the final mix', () => {
     const res = computeRecipe(recipe())
     const mix = res.timeline.find((e) => e.kind === 'mix')!
