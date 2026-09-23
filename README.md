@@ -108,6 +108,7 @@ BASE_PATH=/weatherApp/ pnpm build
 `.github/workflows/deploy.yml` builds and publishes to **GitHub Pages** on every push to `main` (or on a
 manual run). Turn it on once under *Settings → Pages → Build and deployment → Source: GitHub Actions*. The
 app is then at `https://<user>.github.io/<repo>/`. Open it on your phone and use *Add to Home Screen*.
+`netlify.toml` builds the same app on Netlify, if the repo is connected to a Netlify site.
 
 ## How the numbers are worked out
 
