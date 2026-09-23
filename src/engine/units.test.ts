@@ -14,10 +14,10 @@ describe('units', () => {
 
   it('models a daily room-temperature cycle', () => {
     const at = (h: number) => new Date(2026, 0, 10, h, 0).getTime()
-    expect(roomTempAt(at(15), 24, 18)).toBeCloseTo(24, 6)
-    expect(roomTempAt(at(3), 24, 18)).toBeCloseTo(18, 6)
-    expect(roomTempAt(at(9), 24, 18)).toBeCloseTo(21, 6)
-    expect(roomTempAt(at(3), 24, null)).toBe(24)
+    expect(roomTempAt(at(16), 24, 18)).toBeCloseTo(24, 6)
+    expect(roomTempAt(at(4), 24, 18)).toBeCloseTo(18, 6)
+    expect(roomTempAt(at(10), 24, 18)).toBeCloseTo(21, 6)
+    expect(roomTempAt(at(4), 24, null)).toBe(24)
   })
 
   it('converts temperatures both ways', () => {

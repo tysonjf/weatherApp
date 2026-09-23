@@ -39,7 +39,7 @@ export function StepKitchen({ recipe, update, result }: StepProps) {
         </div>
         <Switch
           label="The room cools down at night"
-          hint="Without heating or air-con most kitchens swing a few degrees. The forecast then follows the clock: warmest mid-afternoon, coolest before dawn."
+          hint="Without heating or air-con most kitchens swing 2–5 degrees. The forecast then follows the clock: warmest late afternoon, coolest around dawn."
           checked={k.nightC !== null}
           onChange={(v) => setK({ nightC: v ? Math.round((k.roomC - 3) * 2) / 2 : null })}
         />
@@ -50,7 +50,7 @@ export function StepKitchen({ recipe, update, result }: StepProps) {
             onChangeC={(nightC) => setK({ nightC })}
             minC={0}
             maxC={40}
-            hint="The coolest it gets, around 3–5 am."
+            hint="The coolest it gets, around dawn."
           />
         )}
         <Switch

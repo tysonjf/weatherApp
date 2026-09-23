@@ -62,6 +62,10 @@ export interface PrefermentSpec {
   phases: Phase[]
   /** Desired temperature at the end of mixing. */
   targetTempC: number
+  /** Live: dough temperature measured right after mixing (replaces the forecast). */
+  measuredMixC?: number | null
+  /** Live: how much faster (>1) or slower (<1) this stage ferments than the model, from a rise reading. */
+  activity?: number
 }
 
 export type SizingMode = 'balls' | 'pans'
@@ -95,6 +99,18 @@ export interface FinalDoughSpec {
    * proof until very puffy use ~1.3–1.5; "young" doughs 0.8–0.9.
    */
   proofTarget: number
+  /** Live: dough temperature measured right after mixing (replaces the forecast). */
+  measuredMixC?: number | null
+  /** Live: how much faster (>1) or slower (<1) the dough ferments than the model, from a rise reading. */
+  activity?: number
+}
+
+/** What actually happened while making the dough. */
+export interface LiveLog {
+  /** Stage id → when it was actually mixed (epoch ms). Mixed stages have their amounts locked. */
+  mixed: Record<string, number>
+  /** Sample-jar readings of the final dough. */
+  rises: { at: number; risePct: number }[]
 }
 
 export interface KitchenSpec {
@@ -146,6 +162,8 @@ export interface Recipe {
   /** ISO timestamp of when the pizzas should go in the oven. */
   bakeAt: string | null
   notes: string
+  /** Live tracking of a dough in progress. */
+  live?: LiveLog
 }
 
 /* ------------------------------------------------------------------ */

@@ -17,6 +17,7 @@ import { buildIcs, downloadText } from '../../lib/ics'
 import { shareUrl } from '../../state/share'
 import { GuideTab } from './GuideTab'
 import { FormulaTab } from './FormulaTab'
+import { LiveCard } from './LiveCard'
 
 type Tab = 'recipe' | 'forecast' | 'guide' | 'formula'
 
@@ -147,7 +148,9 @@ export function RecipePage() {
           </Alert>
         )}
 
-        {late && (
+        {result && <LiveCard recipe={recipe} result={result} bake={bake} now={now} />}
+
+        {late && !Object.keys(recipe.live?.mixed ?? {}).length && (
           <div style={{ marginTop: 12 }}>
             <Alert severity="warn" title="The first step was due already">
               <div className="row wrap" style={{ marginTop: 6 }}>

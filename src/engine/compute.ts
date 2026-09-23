@@ -180,7 +180,9 @@ export function computeRecipe(recipe: Recipe, opts: ComputeOptions = {}): Recipe
       segStart += ph.hours
       return seg
     })
-    const sim = simulate(segs, ws.expectedC)
+    const startC = p.measuredMixC ?? ws.expectedC
+    const sim = simulate(segs, startC)
+    const activity = p.activity ?? 1
     let yeastFreshPct = 0
     let seedPct = 0
     let ripeness = 1
@@ -192,6 +194,7 @@ export function computeRecipe(recipe: Recipe, opts: ComputeOptions = {}): Recipe
       seedPct = p.amountMode === 'manual' ? p.manualPct : Math.min(200, seedForDoublings(sim.sdDoublings) * 100 * scale)
       ripeness = sim.sdDoublings / doublingsForSeed(seedPct / 100 / scale)
     }
+    ripeness *= activity
     // Place phases on the bake-relative clock.
     let t = startH
     const resolved: ResolvedPhase[] = phases.map((ph, i) => {
@@ -221,7 +224,7 @@ export function computeRecipe(recipe: Recipe, opts: ComputeOptions = {}): Recipe
       yeastFreshPct,
       seedPct,
       ripeness,
-      mixC: ws.expectedC,
+      mixC: startC,
       endC: sim.endC,
       eqH: sim.eqHours,
       phases: resolved,
@@ -281,7 +284,8 @@ export function computeRecipe(recipe: Recipe, opts: ComputeOptions = {}): Recipe
     segStart += ph.hours
     lastPiece = piece
   }
-  const fsim = simulate(finalSegs, fw0.expectedC)
+  const finalStartC = r.final.measuredMixC ?? fw0.expectedC
+  const fsim = simulate(finalSegs, finalStartC)
 
   /* ---------------- Final leavening ---------------- */
   const P = Math.min(1, prefs.reduce((s, p) => s + p.flourPct / 100, 0))
@@ -327,7 +331,9 @@ export function computeRecipe(recipe: Recipe, opts: ComputeOptions = {}): Recipe
   else finalYeastFreshPct = r.final.extraYeastMode === 'auto' ? Math.max(0, yeastNeeded - carry) : manualExtra
 
   const totalLeaven = carry + finalYeastFreshPct
-  const yeastFraction = totalLeaven > 0 ? eqNeeded / eqHoursForYeast('dough', totalLeaven, mFinal) : 0
+  const finalActivity = r.final.activity ?? 1
+  const yeastFraction = (totalLeaven > 0 ? eqNeeded / eqHoursForYeast('dough', totalLeaven, mFinal) : 0) * finalActivity
+  sdFraction *= finalActivity
   const finalRipeness = yeastFraction + sdFraction
   const finalRipe = ripenessOf({ eq: ratio(yeastFraction, fsim.eqHours), sd: ratio(sdFraction, fsim.sdDoublings), biga: 0 })
   const finalCurve: CurvePoint[] = fsim.curve.map((c) => ({ t: finalStartH + c.t, doughC: c.doughC, envC: c.envC, ripeness: finalRipe(c) }))
@@ -542,7 +548,7 @@ export function computeRecipe(recipe: Recipe, opts: ComputeOptions = {}): Recipe
     endH: 0,
     totalHours: finalH + finalMixH,
     ripeness: finalRipeness,
-    mixTempC: fw.expectedC,
+    mixTempC: r.final.measuredMixC ?? fw.expectedC,
     endTempC: fsim.endC,
     waterPlan: fw,
     equivalentHours20: fsim.eqHours * (rateAt(REF_C) / rateAt(20)),

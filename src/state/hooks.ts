@@ -4,6 +4,16 @@ import { computeRecipe, planDurationH } from '../engine/compute'
 import { useSettings } from './store'
 import { defaultBakeTime } from '../lib/time'
 
+/** The user's calibrations and units as engine options (without the bake time). */
+export function useComputeOptions(recipe: Recipe | null | undefined) {
+  const settings = useSettings()
+  const rise = recipe ? settings.mixerRise[recipe.kitchen.mixerId] : undefined
+  return useMemo(
+    () => ({ calibratedRiseC: rise, tempUnit: settings.tempUnit, yeastScale: settings.yeastScale }),
+    [rise, settings.tempUnit, settings.yeastScale],
+  )
+}
+
 /** Runs the whole engine for a recipe with the user's calibrations and units. */
 export function useCompute(recipe: Recipe | null | undefined): RecipeResult | null {
   const settings = useSettings()

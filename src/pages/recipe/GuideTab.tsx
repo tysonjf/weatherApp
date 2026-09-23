@@ -1,6 +1,8 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import type { Recipe, RecipeResult } from '../../engine/types'
 import { buildGuide } from '../../engine/instructions'
+import { unmarkMixed } from '../../engine/replan'
+import { MixedSheet } from './LiveCard'
 import { atTime } from '../../state/hooks'
 import { useSettings, useStore } from '../../state/store'
 import { formatDayClock } from '../../lib/time'
@@ -11,6 +13,8 @@ export function GuideTab({ recipe, result, bake, now }: { recipe: Recipe; result
   const progress = useStore((s) => s.progress[recipe.id])
   const toggleStep = useStore((s) => s.toggleStep)
   const resetProgress = useStore((s) => s.resetProgress)
+  const saveRecipe = useStore((s) => s.saveRecipe)
+  const [mixing, setMixing] = useState<{ stageId: string; key: string } | null>(null)
   const steps = useMemo(
     () => buildGuide(recipe, result, { temp: settings.tempUnit, weight: settings.weightUnit }),
     [recipe, result, settings.tempUnit, settings.weightUnit],
@@ -40,7 +44,17 @@ export function GuideTab({ recipe, result, bake, now }: { recipe: Recipe; result
             <li
               key={s.key}
               className={isDone ? 'done' : ''}
-              onClick={() => toggleStep(recipe.id, `step:${s.key}`)}
+              onClick={() => {
+                const key = `step:${s.key}`
+                const isMix = s.key === 'final-mix' || s.key === `${s.stageId}-mix`
+                const mixed = recipe.live?.mixed[s.stageId] !== undefined
+                if (isMix && !isDone && !mixed) return setMixing({ stageId: s.stageId, key })
+                if (isMix && isDone && mixed) {
+                  if (!confirm('Undo “mixed”? The amounts go back to automatic.')) return
+                  saveRecipe(unmarkMixed(recipe, s.stageId))
+                }
+                toggleStep(recipe.id, key)
+              }}
               style={{ cursor: 'pointer' }}
               aria-current={s.key === nextKey ? 'step' : undefined}
             >
@@ -65,6 +79,19 @@ export function GuideTab({ recipe, result, bake, now }: { recipe: Recipe; result
           )
         })}
       </ol>
+      {mixing && (
+        <MixedSheet
+          recipe={recipe}
+          result={result}
+          stageId={mixing.stageId}
+          bake={bake}
+          onClose={() => setMixing(null)}
+          onSaved={() => {
+            if (!done.has(mixing.key)) toggleStep(recipe.id, mixing.key)
+            setMixing(null)
+          }}
+        />
+      )}
     </div>
   )
 }

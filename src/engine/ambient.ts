@@ -1,11 +1,11 @@
 /**
  * Room temperature through the day.
  *
- * Homes without climate control drift between a mid-afternoon high and a pre-dawn low. A cosine
- * between the two (warmest ~15:00, coolest ~03:00) is a good first-order model for a kitchen;
- * with no night temperature set the room is treated as constant.
+ * Homes without climate control drift 2–5 °C between a late-afternoon high and a pre-dawn low. A
+ * cosine between the two (warmest ~16:00, coolest ~04:00) is a good first-order model for a
+ * kitchen; with no night temperature set the room is treated as constant.
  */
-export const WARMEST_HOUR = 15
+export const WARMEST_HOUR = 16
 
 /** Room temperature at a moment (epoch ms, local clock) given the day (warmest) and night (coolest) values. */
 export function roomTempAt(ms: number, dayC: number, nightC: number | null | undefined): number {
