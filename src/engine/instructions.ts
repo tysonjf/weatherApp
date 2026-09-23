@@ -166,7 +166,24 @@ function finalSteps(ctx: Ctx): GuideStep[] {
       : `${ctx.w(water.grams)} water at ${ctx.t(s.waterPlan?.waterC ?? r.kitchen.roomC)}`
     : 'no extra water'
 
+  const autolyseMin = Math.max(0, r.final.autolyseMin ?? 0)
+  if (autolyseMin > 0) {
+    steps.push({
+      key: 'final-autolyse',
+      stageId: 'final',
+      title: 'Autolyse',
+      atH: startH - autolyseMin / 60,
+      body: [
+        `Mix ${flour ? ctx.w(flour.grams) : 'the'} flour with ${waterText}, holding back about 5 % of the water. Stir just until no dry flour is left.`,
+        `Cover and rest ${autolyseMin} minutes. The flour hydrates and gluten starts forming on its own, so the dough needs less kneading and stretches more easily.`,
+        `Salt, ${r.method === 'indirect' ? 'the preferments, ' : ''}${starter ? 'starter' : 'yeast'} and the held-back water go in at the next step.`,
+      ],
+    })
+  }
+
   const mixBody: string[] = []
+  if (autolyseMin > 0)
+    mixBody.push('Everything below goes into the rested flour and water: squeeze it in by hand or mix on low speed until absorbed.')
   if (r.method === 'indirect') {
     mixBody.push(`Pour ${waterText} into the bowl.`)
     for (const p of prefLines) {
@@ -225,6 +242,9 @@ function finalSteps(ctx: Ctx): GuideStep[] {
   knead.push(`Check the temperature: aim for ${ctx.t(r.kitchen.targetFdtC, 1)} (expected ${ctx.t(s.mixTempC, 1)}). Note the actual value to calibrate your mixer.`)
   knead.push('Done when smooth, slightly tacky and a small piece stretches into a thin, translucent sheet.')
   steps.push({ key: 'final-knead', stageId: 'final', title: 'Knead & develop', atH: startH + 0.1, body: knead })
+
+  for (const f of res.timeline.filter((e) => e.kind === 'fold'))
+    steps.push({ key: `final-${f.id}`, stageId: 'final', title: f.title, atH: f.atH, body: [f.detail] })
 
   // Fermentation phases grouped around balling.
   const bulk = s.phases.filter((p) => (p.stage ?? 'bulk') === 'bulk')

@@ -24,7 +24,7 @@ export interface DayPlan {
 export const DEFAULT_DAY: DayPlan = { sleepFrom: 23, sleepTo: 7, workOn: false, workFrom: 9, workTo: 17.5 }
 
 /** Timeline steps that need you in the kitchen and can be moved. */
-export const HANDS_ON: TimelineKind[] = ['feed', 'build', 'mix', 'ball', 'move', 'temper']
+export const HANDS_ON: TimelineKind[] = ['feed', 'build', 'autolyse', 'mix', 'fold', 'ball', 'move', 'temper']
 
 export interface Block {
   start: number
@@ -102,7 +102,7 @@ const liveIdx = (phases: Phase[]) => phases.map((p, i) => (p.hours > 0 ? i : -1)
 function moversOf(r: Recipe, e: TimelineEvent): { stageId: string; index: number }[] {
   const final = liveIdx(r.final.phases)
   const all = (stageId: string, idx: number[]) => idx.map((index) => ({ stageId, index }))
-  if (e.id === 'final-mix' || e.id === 'starter-feed') return all('final', final)
+  if (e.id === 'final-mix' || e.id === 'starter-feed' || e.id === 'autolyse' || e.id.startsWith('fold-')) return all('final', final)
   const m = /^(ball|final-move)-(\d+)$/.exec(e.id)
   if (m) return all('final', final.slice(Number(m[2])))
   for (const p of r.preferments) {

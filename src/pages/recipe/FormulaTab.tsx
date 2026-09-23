@@ -1,6 +1,6 @@
 import { Fragment } from 'react'
 import type { Recipe, RecipeResult } from '../../engine/types'
-import { flourById } from '../../engine/presets'
+import { blendOf } from '../../engine/presets'
 import { mixerById } from '../../engine/mixers'
 import { formatHours, formatNumber, formatPct, formatTemp, formatTempDelta, formatWeight } from '../../engine/units'
 import { YEAST_LABEL, yeastFromFresh } from '../../engine/yeastTypes'
@@ -23,7 +23,7 @@ export function FormulaTab({ recipe, result }: { recipe: Recipe; result: RecipeR
   if (t.honey > 0) rows.push(['Honey', t.honey])
   if (t.yeast > 0) rows.push([`${YEAST_LABEL[recipe.yeastType]}`, t.yeast])
   if (t.starter > 0) rows.push(['Ripe starter (incl. in flour & water)', t.starter])
-  const flour = flourById(recipe.flourId)
+  const flour = blendOf(recipe)
   const mixer = mixerById(recipe.kitchen.mixerId)
   const final = result.stages.find((s) => s.id === 'final')!
   const perLitre = (pct: number) => (1000 * pct) / recipe.hydration

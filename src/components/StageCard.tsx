@@ -1,7 +1,8 @@
 import type { IngredientKind, Recipe, StageResult } from '../engine/types'
 import { prefermentPreset } from '../engine/presets'
 import { formatPct, formatTemp, formatWeight } from '../engine/units'
-import { YEAST_SHORT } from '../engine/yeastTypes'
+import { YEAST_LABEL, YEAST_SHORT } from '../engine/yeastTypes'
+import { dilutionNote, teaspoons, tooSmallToWeigh } from '../engine/measures'
 import { useSettings } from '../state/store'
 import { atTime } from '../state/hooks'
 import { formatDayClock } from '../lib/time'
@@ -35,7 +36,7 @@ export function StageCard({
   checked?: Set<string>
   onToggle?: (key: string) => void
 }) {
-  const { tempUnit, weightUnit, timeFormat, showClassicDdt } = useSettings()
+  const { tempUnit, weightUnit, timeFormat, showClassicDdt, scaleStepG } = useSettings()
   const u = tempUnit
   const w = stage.waterPlan
   const lv = stage.leavening
@@ -77,6 +78,9 @@ export function StageCard({
               <span>
                 <div className="ing-name">{l.label}</div>
                 {l.note && <div className="ing-note">{l.note}</div>}
+                {(l.kind === 'yeast' || l.kind === 'malt' || ((l.kind === 'salt' || l.kind === 'sugar') && l.grams < 15)) && l.grams > 0 && (
+                  <SmallAmount kind={l.kind} grams={l.grams} recipe={recipe} scaleStepG={scaleStepG} />
+                )}
               </span>
               <span className="ing-qty">
                 {formatWeight(l.grams, weightUnit)}
@@ -128,5 +132,18 @@ export function StageCard({
         )}
       </div>
     </section>
+  )
+}
+
+/** Spoon measure and, for yeast too small for the user's scale, the 1 % solution trick. */
+function SmallAmount({ kind, grams, recipe, scaleStepG }: { kind: IngredientKind; grams: number; recipe: Recipe; scaleStepG: number }) {
+  const tsp = teaspoons(kind, grams, recipe.yeastType)
+  const tiny = kind === 'yeast' && tooSmallToWeigh(grams, scaleStepG)
+  if (!tsp && !tiny) return null
+  return (
+    <>
+      {tsp && <div className="ing-note">{tsp}</div>}
+      {tiny && <div className="ing-note">{dilutionNote(grams, YEAST_LABEL[recipe.yeastType].toLowerCase())}</div>}
+    </>
   )
 }

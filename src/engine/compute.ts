@@ -24,7 +24,7 @@ import {
 } from './temperature'
 import { phaseTempC, totalHours } from './phases'
 import { mixerById } from './mixers'
-import { flourById, ovenById, prefermentPreset, recommendedW, styleById } from './presets'
+import { blendOf, ovenById, prefermentPreset, recommendedW, styleById } from './presets'
 import {
   BAKE_WINDOW,
   REF_C,
@@ -71,11 +71,11 @@ export function planDurationH(r: Recipe): number {
   const finalMixH = Math.max(0, r.final.mixMinutes) / 60
   const finalH = totalHours(r.final.phases.filter((p) => p.hours > 0))
   const feedLead = doublingsForSeed(1) * sdDoublingHours(r.kitchen.roomC)
-  let before = 0
+  let before = Math.max(0, r.final.autolyseMin ?? 0) / 60
   if (r.method === 'indirect') {
     for (const p of r.preferments)
       before = Math.max(before, totalHours(p.phases.filter((x) => x.hours > 0)) + (p.leavening === 'sourdough' ? feedLead : 0))
-  } else if (r.directLeavening === 'sourdough') before = feedLead
+  } else if (r.directLeavening === 'sourdough') before = Math.max(before, feedLead)
   return finalMixH + finalH + before
 }
 
@@ -912,9 +912,26 @@ function collectAdvice(r: Recipe, res: RecipeResult, comp: Composition, prefStat
       detail: 'Cold dough tears and bakes pale. Add a final room-temperature phase of 1.5–3 h to temper the balls.',
     })
 
-  // Flour strength
-  const flour = flourById(r.flourId)
+  // Flour strength (a blend's W is the weighted average: rough, but what mills use)
+  const flour = blendOf(r)
   const rec = res.recommendedW
+  if (flour.wholePct + flour.semiPct * 0.5 >= 5) {
+    const extra = Math.round((flour.wholePct * 0.1 + flour.semiPct * 0.05) * 2) / 2
+    if (extra >= 1)
+      add({
+        severity: 'tip',
+        scope: 'recipe',
+        title: `Whole grain in the flour: about ${extra} points more water`,
+        detail: 'Bran soaks up water (≈ +0.1 % hydration per 1 % wholemeal) and whole grain ferments 10–25 % faster — check the dough a little early.',
+      })
+  }
+  if (flour.semolaPct >= 20)
+    add({
+      severity: 'tip',
+      scope: 'recipe',
+      title: 'Semola hydrates slowly',
+      detail: 'Give it a 20–30 min autolyse (flour and water only) or add the last water late (bassinage).',
+    })
   if (flour.w[1] < rec.min - 30)
     add({
       severity: 'warn',
@@ -947,7 +964,7 @@ function collectAdvice(r: Recipe, res: RecipeResult, comp: Composition, prefStat
       title: 'Sugar and oil burn above 400 °C',
       detail: 'Neapolitan-style ovens need no sugar or oil — they can scorch the crust in 60–90 s.',
     })
-  if (flour.id.startsWith('us-') && r.maltPct > 0)
+  if (r.flourId.startsWith('us-') && r.maltPct > 0)
     add({
       severity: 'info',
       scope: 'recipe',

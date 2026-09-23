@@ -34,6 +34,7 @@ const SERVICE: Record<string, OvenService> = {
   'home-stone': { bakeSec: 540, turnEverySec: 0, cadenceMin: 15, capacity: 1 },
   'home-pan': { bakeSec: 900, turnEverySec: 0, cadenceMin: 18, capacity: 2 },
   deck: { bakeSec: 420, turnEverySec: 0, cadenceMin: 8, capacity: 2 },
+  fryer: { bakeSec: 150, turnEverySec: 60, cadenceMin: 4, capacity: 2 },
 }
 export const ovenService = (ovenId: string): OvenService => SERVICE[ovenId] ?? SERVICE['home-steel']
 
@@ -55,10 +56,21 @@ const DOUGH_PER_ADULT: Record<string, number> = {
   teglia: 200,
   focaccia: 120,
   custom: 250,
+  'new-haven': 220,
+  'deep-dish': 250,
+  'bar-pie': 185,
+  'quad-cities': 200,
+  calzone: 280,
+  fritta: 150,
+  genovese: 120,
+  pala: 200,
+  cracker: 140,
+  greek: 220,
+  california: 165,
 }
 const APPETITE: Record<Appetite, number> = { light: 0.75, normal: 1, hungry: 1.35 }
 /** Styles where everyone gets their own pizza. */
-const PERSONAL = new Set(['neapolitan', 'canotto', 'roman', 'pinsa', 'custom'])
+const PERSONAL = new Set(['neapolitan', 'canotto', 'roman', 'pinsa', 'custom', 'calzone', 'fritta', 'california'])
 
 /** Balls or pans to make for a party. */
 export function piecesFor(r: Recipe, pieceWeightG: number, party: PartySpec): number {
@@ -107,7 +119,135 @@ const NEAPOLITAN_SAUCE =
 const NY_SAUCE = 'Crushed tomatoes with about 1 % salt, a pinch of sugar, dried oregano and a little garlic and olive oil. Uncooked, or simmered 15–20 min for a sweeter sauce.'
 const PAN_SAUCE = 'A thick cooked sauce: crushed tomatoes simmered 20–30 min with garlic, oregano, a pinch of sugar and salt to taste.'
 
+const TOMATO_PIE = 'Crushed tomatoes with a little salt, oregano and olive oil; grated Pecorino on top. Mozzarella (“mootz”) is an extra.'
+
 const PROFILES: Record<string, Profile> = {
+  'new-haven': {
+    basis: 'area',
+    doughPerCm2: 0.34,
+    sauce: 0.13,
+    cheese: 0.08,
+    cheeseName: 'Mozzarella (“mootz”, optional)',
+    oil: 0.01,
+    extras: [{ key: 'pecorino', name: 'Grated Pecorino Romano', amount: 0.012 }],
+    sauceName: 'Tomato pie sauce',
+    sauceRecipe: TOMATO_PIE,
+  },
+  'deep-dish': {
+    basis: 'area',
+    sauce: 0.45,
+    cheese: 0.45,
+    cheeseName: 'Sliced low-moisture mozzarella',
+    oil: 0,
+    extras: [
+      { key: 'parm', name: 'Grated Parmesan', amount: 0.02 },
+      { key: 'sausage', name: 'Italian sausage (optional)', amount: 0.25 },
+    ],
+    sauceName: 'Chunky tomato sauce',
+    sauceRecipe: 'Crushed or hand-crushed whole tomatoes, drained a little, with salt, oregano, basil and garlic — thick, barely cooked; it goes on top.',
+  },
+  'bar-pie': {
+    basis: 'area',
+    sauce: 0.12,
+    cheese: 0.3,
+    cheeseName: 'Sharp cheddar & mozzarella, shredded',
+    oil: 0.02,
+    extras: [],
+    sauceName: 'Sauce',
+    sauceRecipe: NY_SAUCE,
+  },
+  'quad-cities': {
+    basis: 'area',
+    doughPerCm2: 0.4,
+    sauce: 0.14,
+    cheese: 0.2,
+    cheeseName: 'Low-moisture mozzarella, shredded',
+    oil: 0,
+    extras: [{ key: 'sausage', name: 'Lean fennel sausage', amount: 0.12 }],
+    sauceName: 'Spicy sauce',
+    sauceRecipe: 'Smooth tomato sauce with plenty of red pepper flakes, cayenne and a little sugar.',
+  },
+  calzone: {
+    basis: 'piece',
+    refG: 280,
+    sauce: 20,
+    cheese: 60,
+    cheeseName: 'Fior di latte, diced and drained',
+    oil: 5,
+    extras: [
+      { key: 'ricotta', name: 'Ricotta', amount: 120 },
+      { key: 'salame', name: 'Salame Napoli, diced', amount: 40 },
+    ],
+    sauceName: 'Tomato (a spoonful on top)',
+    sauceRecipe: NEAPOLITAN_SAUCE,
+  },
+  fritta: {
+    basis: 'piece',
+    refG: 150,
+    sauce: 20,
+    cheese: 40,
+    cheeseName: 'Provola (smoked), diced',
+    oil: 0,
+    extras: [
+      { key: 'ricotta', name: 'Ricotta', amount: 70 },
+      { key: 'cicoli', name: 'Cicoli or salame, chopped', amount: 30 },
+    ],
+    sauceName: 'Tomato',
+    sauceRecipe: 'A little tomato inside; the filling is mostly ricotta, provola and cicoli. Fry in peanut or high-oleic sunflower oil.',
+  },
+  genovese: {
+    basis: 'area',
+    sauce: 0,
+    cheese: 0,
+    cheeseName: '',
+    oil: 0.07,
+    extras: [{ key: 'flaky', name: 'Coarse salt for the top', amount: 0.004 }],
+    sauceName: '',
+    sauceRecipe: 'Salamoia: equal parts water and olive oil with a pinch of salt, whisked and poured into the dimples just before the last proof.',
+  },
+  pala: {
+    basis: 'area',
+    doughPerCm2: 0.3,
+    sauce: 0.12,
+    cheese: 0.1,
+    cheeseName: 'Mozzarella, drained',
+    oil: 0.02,
+    extras: [],
+    sauceName: 'Tomatoes',
+    sauceRecipe: NEAPOLITAN_SAUCE,
+  },
+  cracker: {
+    basis: 'area',
+    doughPerCm2: 0.25,
+    sauce: 0.1,
+    cheese: 0.16,
+    cheeseName: 'Low-moisture mozzarella, shredded',
+    oil: 0,
+    extras: [],
+    sauceName: 'Pizza sauce',
+    sauceRecipe: NY_SAUCE,
+  },
+  greek: {
+    basis: 'area',
+    sauce: 0.2,
+    cheese: 0.3,
+    cheeseName: 'Mozzarella & cheddar blend',
+    oil: 0.03,
+    extras: [{ key: 'oregano', name: 'Dried oregano', amount: 0.002 }],
+    sauceName: 'Sauce',
+    sauceRecipe: 'Tomato paste thinned with water, seasoned with oregano, garlic and a little sugar — thick and tangy.',
+  },
+  california: {
+    basis: 'piece',
+    refG: 165,
+    sauce: 40,
+    cheese: 60,
+    cheeseName: 'Mozzarella (or goat cheese, fontina…)',
+    oil: 5,
+    extras: [],
+    sauceName: 'Sauce (or pesto, or none)',
+    sauceRecipe: 'Anything goes: a light tomato sauce, pesto or just garlic oil under seasonal toppings.',
+  },
   neapolitan: {
     basis: 'piece',
     refG: 250,

@@ -89,6 +89,9 @@ export function recipeFromStyle(styleId: string, settings: Settings = DEFAULT_SE
       reservePct: st.reservePct,
       mixMinutes: mixer.mixMinutes,
       proofTarget: st.proofTarget,
+      autolyseMin: 0,
+      folds: st.folds ?? 0,
+      foldEveryMin: st.foldEveryMin ?? 30,
     },
     kitchen: {
       roomC: settings.roomC,

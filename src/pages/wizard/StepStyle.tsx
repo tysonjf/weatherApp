@@ -1,6 +1,6 @@
-import { FLOURS, OVENS, STYLES, flourById, ovenById } from '../../engine/presets'
+import { FLOURS, OVENS, STYLES, blendOf, flourById, ovenById } from '../../engine/presets'
 import { formatTemp, localizeTemps } from '../../engine/units'
-import { SelectField } from '../../components/fields'
+import { NumberField, SelectField, Switch } from '../../components/fields'
 import { SectionTitle } from '../../components/ui'
 import { applyStyle } from '../../state/recipes'
 import { useSettings } from '../../state/store'
@@ -61,6 +61,39 @@ export function StepStyle({ recipe, update }: StepProps) {
           options={FLOURS.map((f) => ({ value: f.id, label: f.name }))}
           hint={`Protein ${flour.protein} · W ${flour.w[0]}–${flour.w[1]}. ${localizeTemps(flour.note, u)}`}
         />
+        <div style={{ marginTop: 10 }}>
+          <Switch
+            label="Blend in a second flour"
+            hint="Wholemeal, semola or a stronger flour for part of the total."
+            checked={!!recipe.flour2Id}
+            onChange={(v) => update((r) => ({ ...r, flour2Id: v ? 'wholemeal' : null, flour2Pct: r.flour2Pct || 20 }))}
+          />
+        </div>
+        {recipe.flour2Id && (
+          <div className="stack-sm" style={{ marginTop: 10 }}>
+            <div className="grid-2">
+              <SelectField
+                label="Second flour"
+                value={recipe.flour2Id}
+                onChange={(flour2Id) => update((r) => ({ ...r, flour2Id }))}
+                options={FLOURS.map((f) => ({ value: f.id, label: f.name }))}
+              />
+              <NumberField
+                label="Share"
+                value={recipe.flour2Pct ?? 20}
+                onChange={(flour2Pct) => update((r) => ({ ...r, flour2Pct }))}
+                unit="%"
+                step={5}
+                min={1}
+                max={90}
+                decimals={0}
+              />
+            </div>
+            <div className="muted small">
+              Blend: W ≈ {blendOf(recipe).w[0]}–{blendOf(recipe).w[1]} · protein ≈ {blendOf(recipe).proteinPct.toFixed(1)} %
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

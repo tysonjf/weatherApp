@@ -27,6 +27,8 @@ export interface Settings {
   starterSpeed: number
   /** Altitude of your kitchen in metres. */
   altitudeM: number
+  /** Resolution of your kitchen scale (g). */
+  scaleStepG: number
   /** My day: no hands-on steps while asleep (local hours; may wrap past midnight) or at work. */
   sleepFrom: number
   sleepTo: number
@@ -51,6 +53,7 @@ export const DEFAULT_SETTINGS: Settings = {
   yeastScale: 1,
   starterSpeed: 1,
   altitudeM: 0,
+  scaleStepG: 1,
   sleepFrom: 23,
   sleepTo: 7,
   workOn: false,

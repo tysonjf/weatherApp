@@ -214,8 +214,41 @@ export function StepFinal({ recipe, update, result }: StepProps) {
         </div>
       </div>
 
-      <Details summary="Mixing time & bassinage" icon="bowl">
+      <Details summary="Mixing, autolyse & folds" icon="bowl">
         <div className="grid-2">
+          <NumberField
+            label="Autolyse"
+            value={f.autolyseMin ?? 0}
+            onChange={(autolyseMin) => setF({ autolyseMin })}
+            unit="min"
+            step={5}
+            min={0}
+            max={180}
+            decimals={0}
+            hint="Flour + water rest before mixing (0 = none). 20–45 min helps high hydration and semola."
+          />
+          <div />
+          <NumberField
+            label="Stretch & folds"
+            value={f.folds ?? 0}
+            onChange={(folds) => setF({ folds })}
+            unit="sets"
+            step={1}
+            min={0}
+            max={8}
+            decimals={0}
+          />
+          <NumberField
+            label="Every"
+            value={f.foldEveryMin ?? 30}
+            onChange={(foldEveryMin) => setF({ foldEveryMin })}
+            unit="min"
+            step={5}
+            min={10}
+            max={90}
+            decimals={0}
+            hint="During the bulk; each set is a reminder in the timeline."
+          />
           <NumberField
             label="Mixing & kneading"
             value={f.mixMinutes}

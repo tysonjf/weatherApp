@@ -103,6 +103,11 @@ export interface FinalDoughSpec {
   measuredMixC?: number | null
   /** Live: how much faster (>1) or slower (<1) the dough ferments than the model, from a rise reading. */
   activity?: number
+  /** Autolyse: flour and water rest this long before the dough is mixed (min, 0 = none). */
+  autolyseMin?: number
+  /** Sets of stretch-and-folds during the bulk, and the minutes between them. */
+  folds?: number
+  foldEveryMin?: number
 }
 
 export type Appetite = 'light' | 'normal' | 'hungry'
@@ -150,6 +155,9 @@ export interface Recipe {
   styleId: string
   ovenId: string
   flourId: string
+  /** Optional second flour blended in (share of the total flour, %). */
+  flour2Id?: string | null
+  flour2Pct?: number
   createdAt: number
   updatedAt: number
   sizing: Sizing
@@ -318,7 +326,9 @@ export type TimelineKind =
   | 'feed'
   | 'build'
   | 'move'
+  | 'autolyse'
   | 'mix'
+  | 'fold'
   | 'ball'
   | 'temper'
   | 'preheat'

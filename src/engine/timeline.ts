@@ -91,6 +91,18 @@ export function buildTimeline(input: TimelineInput, unit: (c: number) => string)
     })
   }
 
+  const autolyseH = Math.max(0, r.final.autolyseMin ?? 0) / 60
+  if (autolyseH > 0)
+    events.push({
+      id: 'autolyse',
+      kind: 'autolyse',
+      atH: finalStart - autolyseH,
+      durationMin: 10,
+      title: 'Autolyse: flour + water',
+      detail: `Mix the ${r.method === 'indirect' ? 'final-dough ' : ''}flour with the water (hold back ~5 % to add later) until no dry bits remain. Cover and rest ${Math.round(autolyseH * 60)} min; salt, yeast${r.method === 'indirect' ? ' and the preferments' : ''} go in when you mix.`,
+      stageId: 'final',
+    })
+
   events.push({
     id: 'final-mix',
     kind: 'mix',
@@ -100,6 +112,22 @@ export function buildTimeline(input: TimelineInput, unit: (c: number) => string)
     detail: input.waterNotes.final ?? '',
     stageId: 'final',
   })
+
+  // Stretch-and-folds early in the bulk (only while the dough is still in one piece).
+  const folds = Math.max(0, Math.round(r.final.folds ?? 0))
+  const every = Math.max(10, r.final.foldEveryMin ?? 30) / 60
+  const firstBulk = finalPhases[0] && (finalPhases[0].stage ?? 'bulk') === 'bulk' ? finalPhases[0] : null
+  if (firstBulk)
+    for (let k = 1; k <= folds && k * every < firstBulk.hours - 0.05; k++)
+      events.push({
+        id: `fold-${k}`,
+        kind: 'fold',
+        atH: finalStart + mixH + k * every,
+        durationMin: 2,
+        title: `Stretch & fold ${k} of ${folds}`,
+        detail: 'Wet your hands, lift one side of the dough and fold it over; turn the bowl and repeat all round (coil folds for very wet dough). Cover again.',
+        stageId: 'final',
+      })
 
   let t = finalStart + mixH
   let balled = false
@@ -179,7 +207,9 @@ export function buildTimeline(input: TimelineInput, unit: (c: number) => string)
     feed: 0,
     build: 1,
     move: 2,
+    autolyse: 2.5,
     mix: 3,
+    fold: 3.5,
     ball: 4,
     temper: 5,
     preheat: 6,

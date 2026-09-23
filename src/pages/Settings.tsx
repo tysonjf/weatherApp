@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router'
 import { TopBar } from '../components/Layout'
+import { Icon } from '../components/Icon'
 import { CalibrationCard } from './journal/CalibrationCard'
 import { doublingsForSeed, sdDoublingHours } from '../engine/fermentation'
 import { pressureRatio } from '../engine/altitude'
@@ -11,10 +12,33 @@ import { MIXERS, mixerById } from '../engine/mixers'
 import type { YeastType } from '../engine/types'
 import { formatTempDelta } from '../engine/units'
 import { YEAST_LABEL } from '../engine/yeastTypes'
-import { useSettings, useStore } from '../state/store'
+import { makeBackup, parseBackup, useSettings, useStore } from '../state/store'
+import { downloadText } from '../lib/ics'
 
 export function SettingsPage() {
   const settings = useSettings()
+  const importBackup = useStore((s) => s.importBackup)
+  const [backupMsg, setBackupMsg] = useState<string | null>(null)
+  const exportAll = () => {
+    const s = useStore.getState()
+    const day = new Date().toISOString().slice(0, 10)
+    downloadText(`pizza-weather-backup-${day}.json`, JSON.stringify(makeBackup(s), null, 2), 'application/json')
+    setBackupMsg(`Saved ${Object.keys(s.recipes).length} doughs and ${s.journal.length} journal entries.`)
+  }
+  const importFile = async (file: File) => {
+    try {
+      const b = parseBackup(JSON.parse(await file.text()))
+      if (!b) {
+        setBackupMsg('That file isn’t a Pizza Weather backup.')
+        return
+      }
+      const withSettings = confirm('Also restore the settings from the backup (units, kitchen, calibrations)?')
+      const n = importBackup(b, withSettings)
+      setBackupMsg(`Restored ${n.recipes} doughs and ${n.journal} journal entries${withSettings ? ' and your settings' : ''}.`)
+    } catch {
+      setBackupMsg('Couldn’t read that file.')
+    }
+  }
   const [peakH, setPeakH] = useState(5)
   const [peakC, setPeakC] = useState(24)
   const modelPeak = doublingsForSeed(1) * sdDoublingHours(peakC)
@@ -74,6 +98,26 @@ export function SettingsPage() {
               ]}
             />
           </div>
+        </div>
+
+        <SectionTitle>Your scale</SectionTitle>
+        <div className="card stack">
+          <div className="field">
+            <span className="label">My scale reads to</span>
+            <Segmented
+              ariaLabel="Scale resolution"
+              value={String(settings.scaleStepG) as '1' | '0.1' | '0.01'}
+              onChange={(v) => setSettings({ scaleStepG: Number(v) })}
+              options={[
+                { value: '1', label: '1 g' },
+                { value: '0.1', label: '0.1 g' },
+                { value: '0.01', label: '0.01 g' },
+              ]}
+            />
+          </div>
+          <p className="muted small" style={{ margin: 0 }}>
+            Yeast below about five steps of your scale gets a teaspoon measure and the 1 % solution trick.
+          </p>
         </div>
 
         <SectionTitle>Defaults for new doughs</SectionTitle>
@@ -229,6 +273,32 @@ export function SettingsPage() {
               <ClockField label="Until" hours={settings.workTo} onChange={(workTo) => setSettings({ workTo })} />
             </div>
           )}
+        </div>
+
+        <SectionTitle>Backup</SectionTitle>
+        <div className="card stack">
+          <p className="muted small" style={{ margin: 0 }}>
+            Everything lives in this browser only. Save a backup file now and then — or to move to another device.
+          </p>
+          <div className="row wrap" style={{ gap: 8 }}>
+            <button className="btn soft" onClick={exportAll}>
+              <Icon name="download" size={18} /> Save a backup
+            </button>
+            <label className="btn soft" style={{ cursor: 'pointer' }}>
+              <Icon name="upload" size={18} /> Restore…
+              <input
+                type="file"
+                accept="application/json,.json"
+                style={{ display: 'none' }}
+                onChange={(e) => {
+                  const f = e.target.files?.[0]
+                  if (f) void importFile(f)
+                  e.target.value = ''
+                }}
+              />
+            </label>
+          </div>
+          {backupMsg && <div className="small">{backupMsg}</div>}
         </div>
 
         <SectionTitle>About</SectionTitle>
