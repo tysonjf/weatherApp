@@ -28,9 +28,31 @@ export function StepKitchen({ recipe, update, result }: StepProps) {
 
       <div className="card stack">
         <div className="grid-2">
-          <TempField label="Room" valueC={k.roomC} onChangeC={(roomC) => setK({ roomC })} minC={5} maxC={40} />
+          <TempField
+            label={k.nightC === null ? 'Room' : 'Room by day'}
+            valueC={k.roomC}
+            onChangeC={(roomC) => setK({ roomC })}
+            minC={5}
+            maxC={40}
+          />
           <TempField label="Fridge" valueC={k.fridgeC} onChangeC={(fridgeC) => setK({ fridgeC })} minC={-2} maxC={12} hint={localizeTemps('Measure it — many run 5–7 °C.', u)} />
         </div>
+        <Switch
+          label="The room cools down at night"
+          hint="Without heating or air-con most kitchens swing a few degrees. The forecast then follows the clock: warmest mid-afternoon, coolest before dawn."
+          checked={k.nightC !== null}
+          onChange={(v) => setK({ nightC: v ? Math.round((k.roomC - 3) * 2) / 2 : null })}
+        />
+        {k.nightC !== null && (
+          <TempField
+            label="Room at night"
+            valueC={k.nightC}
+            onChangeC={(nightC) => setK({ nightC })}
+            minC={0}
+            maxC={40}
+            hint="The coolest it gets, around 3–5 am."
+          />
+        )}
         <Switch
           label="Flour is at room temperature"
           checked={k.flourC === null}

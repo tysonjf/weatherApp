@@ -35,7 +35,7 @@ export function WizardPage() {
   const update = (fn: (r: Recipe) => Recipe) => updateDraft(fn)
 
   const save = () => {
-    const bake = bakeDateOf(draft, result)
+    const bake = bakeDateOf(draft)
     // The draft is kept (it now matches the saved recipe); clearing it here would race the
     // wizard's "no draft" redirect against this navigation.
     saveRecipe({ ...draft, bakeAt: bake.toISOString() })
@@ -44,7 +44,7 @@ export function WizardPage() {
   const go = (i: number) => navigate(`/wizard/${steps[Math.max(0, Math.min(steps.length - 1, i))].key}`)
 
   const final = result?.stages.find((s) => s.id === 'final')
-  const bake = bakeDateOf(draft, result)
+  const bake = bakeDateOf(draft)
   const start = result ? new Date(bake.getTime() - result.totalHours * 3600000) : null
 
   let body = null

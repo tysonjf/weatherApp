@@ -27,6 +27,12 @@ export function formatDayClock(d: Date, fmt: TimeFormat = '24h', ref: Date = new
   return `${formatDay(d, ref)} ${formatClock(d, fmt)}`
 }
 
+/** Clock time, prefixed with the weekday when it isn't on the same day as `ref` (e.g. "Fri 02:50"). */
+export function formatNear(d: Date, ref: Date, fmt: TimeFormat = '24h'): string {
+  if (startOfDay(d) === startOfDay(ref)) return formatClock(d, fmt)
+  return `${d.toLocaleDateString(undefined, { weekday: 'short' })} ${formatClock(d, fmt)}`
+}
+
 /** Value for <input type="datetime-local"> in local time. */
 export function toLocalInput(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`

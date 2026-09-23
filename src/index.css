@@ -55,6 +55,7 @@
   --viz-cold-wash: rgba(42, 120, 214, 0.09);
   --viz-warm-wash: rgba(235, 161, 0, 0.1);
   --viz-custom-wash: rgba(0, 131, 0, 0.08);
+  --viz-window-wash: rgba(46, 160, 67, 0.12);
   color-scheme: light;
 }
 
@@ -102,6 +103,7 @@
   --viz-cold-wash: rgba(57, 135, 229, 0.13);
   --viz-warm-wash: rgba(201, 133, 0, 0.13);
   --viz-custom-wash: rgba(0, 131, 0, 0.14);
+  --viz-window-wash: rgba(63, 185, 80, 0.16);
   color-scheme: dark;
 }
 
@@ -1564,6 +1566,19 @@ table.heat td {
 .tchart .now-line {
   stroke: var(--text-2);
   stroke-width: 1;
+}
+.tchart .band-window {
+  fill: var(--viz-window-wash);
+}
+.tchart .band-label {
+  font-size: 10.5px;
+  fill: var(--text-3);
+}
+.tchart .ref-line {
+  stroke: var(--text-3);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+  opacity: 0.8;
 }
 .tchart .cross {
   stroke: var(--text-2);

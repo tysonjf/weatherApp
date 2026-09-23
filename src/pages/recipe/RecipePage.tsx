@@ -6,12 +6,13 @@ import { AdviceList, Alert, Sheet } from '../../components/ui'
 import { StageCard } from '../../components/StageCard'
 import { Timeline } from '../../components/Timeline'
 import { TempChart } from '../../components/TempChart'
+import { RipenessChart } from '../../components/RipenessChart'
 import { NumberField, WeightField } from '../../components/fields'
 import { useSettings, useStore } from '../../state/store'
 import { atTime, bakeDateOf, useCompute, useNow } from '../../state/hooks'
 import { styleById } from '../../engine/presets'
 import { formatHours, formatPct, formatWeight } from '../../engine/units'
-import { formatDayClock, fromLocalInput, roundUp5, toLocalInput } from '../../lib/time'
+import { formatDayClock, formatNear, fromLocalInput, roundUp5, toLocalInput } from '../../lib/time'
 import { buildIcs, downloadText } from '../../lib/ics'
 import { shareUrl } from '../../state/share'
 import { GuideTab } from './GuideTab'
@@ -42,8 +43,10 @@ export function RecipePage() {
   const tab = (params.get('tab') as Tab) || 'recipe'
   const setTab = (t: Tab) => setParams(t === 'recipe' ? {} : { tab: t }, { replace: true })
   const st = styleById(recipe.styleId)
-  const bake = bakeDateOf(recipe, result)
+  const bake = bakeDateOf(recipe)
   const start = result ? atTime(bake, -result.totalHours) : null
+  const win = result?.window
+  const clock = (h: number | null) => (h === null ? null : formatNear(atTime(bake, h), bake, settings.timeFormat))
   const late = start ? start.getTime() < now.getTime() - 10 * 60000 && bake.getTime() > now.getTime() : false
   const wu = settings.weightUnit
 
@@ -113,6 +116,14 @@ export function RecipePage() {
             {start && (
               <div className="muted small">
                 Start {formatDayClock(start, settings.timeFormat)} · {formatHours(result.totalHours)} forecast
+              </div>
+            )}
+            {win && (
+              <div className="small" style={{ marginTop: 6 }}>
+                🎯 Bakes well {clock(win.readyH) ?? 'later'} – {win.untilH === null ? 'late' : clock(win.untilH)}
+                {win.bestH !== null && Math.abs(win.bestH) > 0.3 && (
+                  <span className="muted"> · peaks {clock(win.bestH)}</span>
+                )}
               </div>
             )}
             <div className="hero-stats">
@@ -243,6 +254,17 @@ export function RecipePage() {
                 </div>
               )}
               <TempChart stage={result.stages.find((s) => s.id === chartStage) ?? result.stages[result.stages.length - 1]} bake={bake} now={now} />
+            </div>
+            <div className="card">
+              <div className="card-head">
+                <h3>Ripeness</h3>
+              </div>
+              <RipenessChart
+                stage={result.stages.find((s) => s.id === chartStage) ?? result.stages[result.stages.length - 1]}
+                after={result.window.after}
+                bake={bake}
+                now={now}
+              />
             </div>
             <div className="card">
               <div className="card-head">

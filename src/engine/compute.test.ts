@@ -64,6 +64,47 @@ describe('direct Neapolitan', () => {
   })
 })
 
+describe('ripeness forecast', () => {
+  it('tracks ripeness from mix to bake and finds the bake window around the planned time', () => {
+    const res = computeRecipe(neapolitan())
+    const f = stage(res, 'final')
+    const c = f.curve
+    expect(c[0].ripeness).toBeCloseTo(0, 6)
+    expect(c[c.length - 1].ripeness).toBeCloseTo(f.ripeness, 6)
+    for (let i = 1; i < c.length; i++) expect(c[i].ripeness).toBeGreaterThanOrEqual(c[i - 1].ripeness - 1e-12)
+    expect(res.window.bestH).toBeCloseTo(0, 1)
+    expect(res.window.readyH!).toBeLessThan(0)
+    expect(res.window.untilH!).toBeGreaterThan(0)
+    // Preferment curves end at their own ripeness when the final dough is mixed.
+    const r = neapolitan()
+    r.method = 'indirect'
+    r.preferments = [makePreferment('poolish', 30)]
+    const pres = computeRecipe(r)
+    const pc = pres.stages[0].curve
+    expect(pc[pc.length - 1].ripeness).toBeCloseTo(pres.stages[0].ripeness, 6)
+  })
+})
+
+describe('day/night room temperature', () => {
+  it('uses the cooler night for an overnight room-temperature dough', () => {
+    const r = neapolitan()
+    r.final.phases = [makePhase('room', 2, 'bulk'), makePhase('room', 16, 'balls')]
+    const bakeAtMs = new Date(2026, 5, 6, 19, 0).getTime()
+    const flat = computeRecipe(r, { bakeAtMs })
+    const cool = computeRecipe({ ...r, kitchen: { ...r.kitchen, nightC: r.kitchen.roomC - 5 } }, { bakeAtMs })
+    expect(stage(cool, 'final').leavening.freshPct).toBeGreaterThan(stage(flat, 'final').leavening.freshPct * 1.1)
+    expect(stage(cool, 'final').ripeness).toBeCloseTo(1, 3)
+    // The air follows the daily cycle: coolest in the small hours.
+    const air = stage(cool, 'final').curve.map((p) => p.envC)
+    expect(Math.min(...air)).toBeLessThan(r.kitchen.roomC - 4)
+    // Without a bake time the model can't place the night, so nothing changes.
+    expect(stage(computeRecipe({ ...r, kitchen: { ...r.kitchen, nightC: 15 } }), 'final').leavening.freshPct).toBeCloseTo(
+      stage(flat, 'final').leavening.freshPct,
+      9,
+    )
+  })
+})
+
 describe('biga + poolish (research worked example)', () => {
   function recipe(): Recipe {
     const r = recipeFromStyle('canotto', settings)

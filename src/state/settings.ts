@@ -12,6 +12,8 @@ export interface Settings {
   yeastType: YeastType
   /** Kitchen defaults used for new recipes. */
   roomC: number
+  /** Night-time room temperature (null = the room doesn't cool down at night). */
+  nightC: number | null
   fridgeC: number
   tapC: number
   mixerId: string
@@ -30,6 +32,7 @@ export const DEFAULT_SETTINGS: Settings = {
   timeFormat: '24h',
   yeastType: 'instant',
   roomC: 21,
+  nightC: null,
   fridgeC: 4,
   tapC: 10,
   mixerId: 'hand',

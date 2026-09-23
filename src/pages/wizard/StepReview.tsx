@@ -9,7 +9,7 @@ import type { StepProps } from './steps'
 
 export function StepReview({ recipe, update, result }: StepProps) {
   const settings = useSettings()
-  const bake = bakeDateOf(recipe, result)
+  const bake = bakeDateOf(recipe)
   const st = styleById(recipe.styleId)
   const u = settings.tempUnit
   const wu = settings.weightUnit

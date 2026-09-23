@@ -69,7 +69,7 @@ export function StepPreferment({ prefId, recipe, update, result }: StepProps & {
   const setP = (patch: Partial<PrefermentSpec>) =>
     update((r) => ({ ...r, preferments: r.preferments.map((x) => (x.id === p.id ? { ...x, ...patch } : x)) }))
   const u = settings.tempUnit
-  const bake = bakeDateOf(recipe, result)
+  const bake = bakeDateOf(recipe)
   const idx = recipe.preferments.findIndex((x) => x.id === p.id)
 
   return (

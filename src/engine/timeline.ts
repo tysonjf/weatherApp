@@ -4,8 +4,8 @@ import { ovenById, prefermentPreset } from './presets'
 
 export interface TimelineInput {
   recipe: Recipe
-  /** Resolved environment temperature per final phase / preferment phase. */
-  tempOf: (p: Phase) => number
+  /** Environment temperature of a phase at a moment (hours relative to the bake). */
+  tempOf: (p: Phase, atH: number) => number
   finalMixH: number
   preheatMin: number
   bakeLabel: string
@@ -55,9 +55,9 @@ export function buildTimeline(input: TimelineInput, unit: (c: number) => string)
         atH: t,
         durationMin: 10,
         title: `Mix the ${pf.name.toLowerCase()}`,
-        detail: `${input.waterNotes[pf.id] ?? ''} Then leave it ${place(phases[0]?.location ?? 'room', tempOf(phases[0] ?? pf.phases[0]), unit)}.`.trim(),
+        detail: `${input.waterNotes[pf.id] ?? ''} Then leave it ${place(phases[0]?.location ?? 'room', tempOf(phases[0] ?? pf.phases[0], t), unit)}.`.trim(),
         stageId: pf.id,
-        tempC: phases[0] ? tempOf(phases[0]) : undefined,
+        tempC: phases[0] ? tempOf(phases[0], t) : undefined,
         location: phases[0]?.location,
       })
       phases.forEach((p, i) => {
@@ -68,9 +68,9 @@ export function buildTimeline(input: TimelineInput, unit: (c: number) => string)
             atH: t,
             durationMin: 2,
             title: p.location === 'fridge' ? `${preset.name} into the fridge` : `${preset.name} out: ${locationLabel(p.location).toLowerCase()}`,
-            detail: `Move it ${place(p.location, tempOf(p), unit)} for ${fmtH(p.hours)}.`,
+            detail: `Move it ${place(p.location, tempOf(p, t), unit)} for ${fmtH(p.hours)}.`,
             stageId: pf.id,
-            tempC: tempOf(p),
+            tempC: tempOf(p, t),
             location: p.location,
           })
         }
@@ -116,10 +116,10 @@ export function buildTimeline(input: TimelineInput, unit: (c: number) => string)
         title: r.sizing.mode === 'pans' ? 'Divide & pan' : 'Divide & ball',
         detail:
           r.sizing.mode === 'pans'
-            ? `Divide into ${r.sizing.count} and place in oiled pans, then ${place(p.location, tempOf(p), unit)}.`
-            : `Divide into ${r.sizing.count} balls and shape tightly, then ${place(p.location, tempOf(p), unit)}.`,
+            ? `Divide into ${r.sizing.count} and place in oiled pans, then ${place(p.location, tempOf(p, t), unit)}.`
+            : `Divide into ${r.sizing.count} balls and shape tightly, then ${place(p.location, tempOf(p, t), unit)}.`,
         stageId: 'final',
-        tempC: tempOf(p),
+        tempC: tempOf(p, t),
         location: p.location,
       })
     } else if (prev && p.location !== prev.location) {
@@ -134,9 +134,9 @@ export function buildTimeline(input: TimelineInput, unit: (c: number) => string)
           : p.location === 'fridge'
             ? `${balled ? 'Balls' : 'Dough'} into the fridge`
             : `Move the ${balled ? 'balls' : 'dough'}`,
-        detail: `Keep ${place(p.location, tempOf(p), unit)} for ${fmtH(p.hours)}.`,
+        detail: `Keep ${place(p.location, tempOf(p, t), unit)} for ${fmtH(p.hours)}.`,
         stageId: 'final',
-        tempC: tempOf(p),
+        tempC: tempOf(p, t),
         location: p.location,
       })
     }

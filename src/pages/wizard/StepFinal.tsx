@@ -24,7 +24,7 @@ export function StepFinal({ recipe, update, result }: StepProps) {
   const f = recipe.final
   const setF = (patch: Partial<typeof f>) => update((r) => ({ ...r, final: { ...r.final, ...patch } }))
   const stage = result?.stages.find((s) => s.id === 'final')
-  const bake = bakeDateOf(recipe, result)
+  const bake = bakeDateOf(recipe)
   const start = result ? new Date(bake.getTime() - result.totalHours * 3600000) : null
   const late = start ? start.getTime() < now.getTime() - 5 * 60000 : false
   const targetKey = TARGETS.find((t) => Math.abs(Number(t.value) - f.proofTarget) < 0.01)?.value ?? 'custom'

@@ -17,6 +17,8 @@ export interface ThermalSegment {
   hours: number
   /** Mass of each individual piece in this segment (a ball, or the whole bulk). */
   pieceMassG: number
+  /** Optional time-varying environment (hours since the segment started), e.g. a room that cools at night. */
+  envAt?: (tH: number) => number
 }
 
 export interface TempSample {

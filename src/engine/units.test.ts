@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { cToF, formatHours, formatPct, formatTemp, formatWeight, fToC, gToOz, localizeTemps, roundTo } from './units'
 import { buildIcs } from '../lib/ics'
+import { roomTempAt } from './ambient'
 
 describe('units', () => {
   it('rewrites static °C copy for °F readers', () => {
@@ -9,6 +10,14 @@ describe('units', () => {
     // Oven temperatures round to 5 °F.
     expect(localizeTemps('Floor 430 °C+, dome ~485 °C.', 'F')).toBe('Floor 805 °F+, dome ~905 °F.')
     expect(localizeTemps('No temperatures here', 'F')).toBe('No temperatures here')
+  })
+
+  it('models a daily room-temperature cycle', () => {
+    const at = (h: number) => new Date(2026, 0, 10, h, 0).getTime()
+    expect(roomTempAt(at(15), 24, 18)).toBeCloseTo(24, 6)
+    expect(roomTempAt(at(3), 24, 18)).toBeCloseTo(18, 6)
+    expect(roomTempAt(at(9), 24, 18)).toBeCloseTo(21, 6)
+    expect(roomTempAt(at(3), 24, null)).toBe(24)
   })
 
   it('converts temperatures both ways', () => {

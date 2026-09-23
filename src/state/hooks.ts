@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Recipe, RecipeResult } from '../engine/types'
-import { computeRecipe } from '../engine/compute'
+import { computeRecipe, planDurationH } from '../engine/compute'
 import { useSettings } from './store'
 import { defaultBakeTime } from '../lib/time'
 
@@ -11,7 +11,12 @@ export function useCompute(recipe: Recipe | null | undefined): RecipeResult | nu
   return useMemo(() => {
     if (!recipe) return null
     try {
-      return computeRecipe(recipe, { calibratedRiseC: rise, tempUnit: settings.tempUnit, yeastScale: settings.yeastScale })
+      return computeRecipe(recipe, {
+        calibratedRiseC: rise,
+        tempUnit: settings.tempUnit,
+        yeastScale: settings.yeastScale,
+        bakeAtMs: bakeDateOf(recipe).getTime(),
+      })
     } catch (e) {
       console.error(e)
       return null
@@ -20,12 +25,12 @@ export function useCompute(recipe: Recipe | null | undefined): RecipeResult | nu
 }
 
 /** The bake time: stored, or the next sensible dinner time that fits the plan. */
-export function bakeDateOf(recipe: Recipe, result: RecipeResult | null): Date {
+export function bakeDateOf(recipe: Recipe): Date {
   if (recipe.bakeAt) {
     const d = new Date(recipe.bakeAt)
     if (!Number.isNaN(d.getTime())) return d
   }
-  return defaultBakeTime((result?.totalHours ?? 24) + 0.25)
+  return defaultBakeTime(planDurationH(recipe) + 0.25)
 }
 
 export function useNow(intervalMs = 30000): Date {

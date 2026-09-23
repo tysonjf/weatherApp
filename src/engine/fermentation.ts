@@ -240,6 +240,12 @@ export function doublingsForSeed(seed: number): number {
   return (BUILD_BASE + Math.log2(1 / Math.max(0.005, seed))) / BUILD_SPEED
 }
 
+/**
+ * Final-dough ripeness band that still bakes well (1 = the planned end point). Below it the dough
+ * is young (tight, pale, dense); above it over-proofed (slack, sticky, flat, sour).
+ */
+export const BAKE_WINDOW = { min: 0.85, max: 1.3 }
+
 /* ------------------------------------------------------------------ */
 /* Simulation over a schedule                                          */
 /* ------------------------------------------------------------------ */
@@ -255,42 +261,68 @@ export interface SegmentProgress {
   bigaEq18: number
   meanC: number
   endC: number
+  /** Mean temperature of the surroundings (differs from envC when the room drifts). */
+  meanEnvC: number
 }
 
-export interface SimResult extends Omit<SegmentProgress, 'meanC' | 'endC'> {
+/** A point of the simulated curve with the fermentation clocks accumulated so far. */
+export interface SimPoint {
+  /** Hours from the start of the simulation. */
+  t: number
+  doughC: number
+  envC: number
+  eqHours: number
+  sdDoublings: number
+  bigaEq18: number
+}
+
+export interface SimResult extends Omit<SegmentProgress, 'meanC' | 'endC' | 'meanEnvC'> {
   segments: SegmentProgress[]
   endC: number
-  /** Dough temperature curve (hours from start). */
-  curve: { t: number; doughC: number; envC: number }[]
+  /** Dough temperature curve and running clocks. */
+  curve: SimPoint[]
 }
 
 /** Integrates every fermentation clock over the simulated dough temperature (Newton cooling). */
 export function simulate(segments: SimSegment[], startC: number): SimResult {
   let T = startC
   let t = 0
+  const clocks = { eqHours: 0, sdDoublings: 0, bigaEq18: 0 }
   const segs: SegmentProgress[] = []
-  const curve: SimResult['curve'] = [{ t: 0, doughC: startC, envC: segments[0]?.envC ?? startC }]
+  const env0 = segments[0] ? (segments[0].envAt?.(0) ?? segments[0].envC) : startC
+  const curve: SimPoint[] = [{ t: 0, doughC: startC, envC: env0, ...clocks }]
   for (const seg of segments) {
-    const p: SegmentProgress = { eqHours: 0, sdDoublings: 0, bigaEq18: 0, meanC: T, endC: T }
+    const p: SegmentProgress = { eqHours: 0, sdDoublings: 0, bigaEq18: 0, meanC: T, endC: T, meanEnvC: seg.envC }
     if (seg.hours > 0) {
       const tau = tauHours(seg.pieceMassG)
       const n = Math.max(1, Math.ceil(seg.hours / 0.1))
       const dt = seg.hours / n
       const decay = Math.exp(-dt / tau)
       let sumMean = 0
+      let sumEnv = 0
       for (let k = 0; k < n; k++) {
-        const next = seg.envC + (T - seg.envC) * decay
+        // The surroundings are held constant over each short slice.
+        const env = seg.envAt ? seg.envAt((k + 0.5) * dt) : seg.envC
+        const next = env + (T - env) * decay
         // Exact mean of the exponential over the slice.
-        const mean = seg.envC + ((T - seg.envC) * tau * (1 - decay)) / dt
-        p.eqHours += dt * rateAt(mean)
-        p.sdDoublings += dt / sdDoublingHours(mean)
-        p.bigaEq18 += dt * bigaRateAt(mean)
+        const mean = env + ((T - env) * tau * (1 - decay)) / dt
+        const dE = dt * rateAt(mean)
+        const dS = dt / sdDoublingHours(mean)
+        const dB = dt * bigaRateAt(mean)
+        p.eqHours += dE
+        p.sdDoublings += dS
+        p.bigaEq18 += dB
+        clocks.eqHours += dE
+        clocks.sdDoublings += dS
+        clocks.bigaEq18 += dB
         sumMean += mean * dt
+        sumEnv += env * dt
         T = next
         t += dt
-        if (k === n - 1 || t - curve[curve.length - 1].t >= 0.25) curve.push({ t, doughC: T, envC: seg.envC })
+        if (k === n - 1 || t - curve[curve.length - 1].t >= 0.25) curve.push({ t, doughC: T, envC: env, ...clocks })
       }
       p.meanC = sumMean / seg.hours
+      p.meanEnvC = sumEnv / seg.hours
     }
     p.endC = T
     segs.push(p)

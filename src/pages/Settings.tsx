@@ -75,9 +75,17 @@ export function SettingsPage() {
             options={(['instant', 'active-dry', 'fresh'] as YeastType[]).map((t) => ({ value: t, label: YEAST_LABEL[t] }))}
           />
           <div className="grid-2">
-            <TempField label="Room" valueC={settings.roomC} onChangeC={(roomC) => setSettings({ roomC })} minC={5} maxC={40} />
+            <TempField label={settings.nightC === null ? 'Room' : 'Room by day'} valueC={settings.roomC} onChangeC={(roomC) => setSettings({ roomC })} minC={5} maxC={40} />
             <TempField label="Fridge" valueC={settings.fridgeC} onChangeC={(fridgeC) => setSettings({ fridgeC })} minC={-2} maxC={12} />
           </div>
+          <Switch
+            label="My kitchen cools down at night"
+            checked={settings.nightC !== null}
+            onChange={(v) => setSettings({ nightC: v ? Math.round((settings.roomC - 3) * 2) / 2 : null })}
+          />
+          {settings.nightC !== null && (
+            <TempField label="Room at night" valueC={settings.nightC} onChangeC={(nightC) => setSettings({ nightC })} minC={0} maxC={40} />
+          )}
           <TempField
             label="Coldest tap / fridge water"
             valueC={settings.tapC}

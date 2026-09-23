@@ -27,7 +27,8 @@ export function HomePage() {
     () =>
       list.flatMap((r) => {
         try {
-          return [{ r, res: computeRecipe(r, { calibratedRiseC: mixerRise[r.kitchen.mixerId], tempUnit, yeastScale }) }]
+          const opts = { calibratedRiseC: mixerRise[r.kitchen.mixerId], tempUnit, yeastScale, bakeAtMs: bakeDateOf(r).getTime() }
+          return [{ r, res: computeRecipe(r, opts) }]
         } catch (e) {
           console.error(e)
           return []
@@ -38,7 +39,7 @@ export function HomePage() {
 
   const active = computed
     .map(({ r, res }) => {
-      const bake = bakeDateOf(r, res)
+      const bake = bakeDateOf(r)
       const nowH = (now.getTime() - bake.getTime()) / 3600000
       const next = res.timeline.find((e) => e.atH >= nowH)
       return { r, res, bake, nowH, next }

@@ -1,27 +1,13 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
+import { useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
 import type { StageResult } from '../engine/types'
 import { cToF, formatTemp } from '../engine/units'
 import { atTime } from '../state/hooks'
 import { formatClock, formatDay } from '../lib/time'
 import { useSettings } from '../state/store'
 import { Details } from './ui'
+import { CHART_PAD as PAD, nearestIndex, timeTicks, useWidth } from './chartKit'
 
 const H = 210
-const PAD = { l: 34, r: 12, t: 10, b: 26 }
-
-/** Width of an element in CSS pixels, so SVG text renders at its true size on every screen. */
-function useWidth(fallback = 340) {
-  const ref = useRef<HTMLDivElement>(null)
-  const [w, setW] = useState(fallback)
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    const ro = new ResizeObserver(([e]) => setW(Math.max(260, Math.round(e.contentRect.width))))
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
-  return [ref, w] as const
-}
 const toUnit = (c: number, unit: 'C' | 'F') => (unit === 'F' ? cToF(c) : c)
 
 /**
@@ -49,33 +35,15 @@ export function TempChart({ stage, bake, now }: { stage: StageResult; bake: Date
     const y = (v: number) => PAD.t + (1 - (v - yMin) / Math.max(1, yMax - yMin)) * (H - PAD.t - PAD.b)
     const yTicks: number[] = []
     for (let v = yMin; v <= yMax + 0.001; v += step) yTicks.push(v)
-    // Time ticks aligned to the clock.
-    const span = t1 - t0
-    // Aim for a label every ~70 px.
-    const perLabel = (span * 70) / Math.max(200, W - PAD.l - PAD.r)
-    const every = [1, 2, 3, 4, 6, 8, 12, 24, 48].find((e) => e >= perLabel) ?? 48
-    const start = atTime(bake, t0)
-    const firstTick = new Date(start)
-    firstTick.setMinutes(0, 0, 0)
-    while (firstTick.getHours() % every !== 0 || firstTick < start) firstTick.setHours(firstTick.getHours() + 1)
-    const xTicks: { t: number; label: string }[] = []
-    let lastDay = ''
-    const weekday = (d: Date) => d.toLocaleDateString(undefined, { weekday: 'short' })
-    for (let d = new Date(firstTick); d.getTime() <= atTime(bake, t1).getTime(); d.setHours(d.getHours() + every)) {
-      const t = (d.getTime() - bake.getTime()) / 3600000
-      const day = weekday(d)
-      const label = every >= 24 ? day : day !== lastDay ? `${day} ${formatClock(d, timeFormat)}` : formatClock(d, timeFormat)
-      lastDay = day
-      xTicks.push({ t, label })
-    }
+    const xTicks = timeTicks(bake, t0, t1, W, timeFormat)
     const dough = pts.map((p, i) => `${i ? 'L' : 'M'}${x(p.t).toFixed(1)},${y(conv(p.doughC)).toFixed(1)}`).join('')
-    // Air as a step line.
+    // Air steps when the dough moves (room ⇄ fridge) and drifts smoothly with the room's daily cycle.
     let air = ''
     pts.forEach((p, i) => {
       const X = x(p.t).toFixed(1)
       const Y = y(conv(p.envC)).toFixed(1)
       if (i === 0) air += `M${X},${Y}`
-      else if (p.envC !== pts[i - 1].envC) air += `L${X},${y(conv(pts[i - 1].envC)).toFixed(1)}L${X},${Y}`
+      else if (Math.abs(p.envC - pts[i - 1].envC) > 1.5) air += `L${X},${y(conv(pts[i - 1].envC)).toFixed(1)}L${X},${Y}`
       else air += `L${X},${Y}`
     })
     return { t0, t1, x, y, yTicks, xTicks, dough, air }
@@ -94,9 +62,7 @@ export function TempChart({ stage, bake, now }: { stage: StageResult; bake: Date
     const rect = svg.getBoundingClientRect()
     const px = ((clientX - rect.left) / rect.width) * W
     const t = model.t0 + ((px - PAD.l) / (W - PAD.l - PAD.r)) * (model.t1 - model.t0)
-    let best = 0
-    for (let i = 1; i < pts.length; i++) if (Math.abs(pts[i].t - t) < Math.abs(pts[best].t - t)) best = i
-    return best
+    return nearestIndex(pts, t)
   }
   const onMove = (e: PointerEvent<SVGSVGElement>) => setHover(pickIndex(e.clientX))
   const onKey = (e: KeyboardEvent<SVGSVGElement>) => {
@@ -125,14 +91,24 @@ export function TempChart({ stage, bake, now }: { stage: StageResult; bake: Date
           <span className="lk" style={{ background: 'var(--viz-air)' }} />
           Air around it
         </span>
-        <span>
-          <span className="sw" style={{ background: 'var(--viz-warm-wash)', border: '1px solid var(--border)' }} />
-          Room
-        </span>
-        <span>
-          <span className="sw" style={{ background: 'var(--viz-cold-wash)', border: '1px solid var(--border)' }} />
-          Fridge
-        </span>
+        {stage.phases.some((p) => p.location === 'room') && (
+          <span>
+            <span className="sw" style={{ background: 'var(--viz-warm-wash)', border: '1px solid var(--border)' }} />
+            Room
+          </span>
+        )}
+        {stage.phases.some((p) => p.location === 'fridge') && (
+          <span>
+            <span className="sw" style={{ background: 'var(--viz-cold-wash)', border: '1px solid var(--border)' }} />
+            Fridge
+          </span>
+        )}
+        {stage.phases.some((p) => p.location === 'custom') && (
+          <span>
+            <span className="sw" style={{ background: 'var(--viz-custom-wash)', border: '1px solid var(--border)' }} />
+            Set temperature
+          </span>
+        )}
       </div>
       <div className="tchart" ref={wrapRef}>
         <svg

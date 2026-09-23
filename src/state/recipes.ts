@@ -3,6 +3,7 @@ import { makePhase, uid } from '../engine/phases'
 import { prefermentPreset, scheduleById, styleById, type StylePreset } from '../engine/presets'
 import { DEFAULT_SETTINGS, type Settings } from './settings'
 import { mixerById } from '../engine/mixers'
+import { computeRecipe } from '../engine/compute'
 import { defaultBakeTime } from '../lib/time'
 
 export function makePreferment(type: PrefermentType, flourPct?: number, settings?: Pick<Settings, 'roomC'>): PrefermentSpec {
@@ -97,6 +98,7 @@ export function recipeFromStyle(styleId: string, settings: Settings = DEFAULT_SE
       mixerId: settings.mixerId,
       mixerRiseC: null,
       targetFdtC: st.targetFdtC,
+      nightC: settings.nightC,
     },
     bakeAt: null,
     notes: '',
@@ -181,14 +183,34 @@ export function applyMethod(r: Recipe, m: MethodPreset, settings: Pick<Settings,
               : [makePreferment('licoli', 15, settings)]
       // Natural leavening needs a longer final fermentation than a yeasted preferment.
       const finalPhases = m === 'levain' ? phases(scheduleById('sourdough-day')) : wasIndirect ? r.final.phases : phases(indirectSchedule)
-      return {
+      const next: Recipe = {
         ...r,
         method: 'indirect',
         preferments: prefs,
-        final: { ...r.final, phases: finalPhases, extraYeastMode: 'auto' },
+        final: { ...r.final, phases: finalPhases, extraYeastMode: m === 'levain' ? 'none' : 'auto' },
       }
+      return m === 'levain' ? sizeLevain(next) : next
     }
   }
+}
+
+/**
+ * A levain is the only leavening of a sourdough dough, so its share sets the pace: pick the share
+ * of flour that leaves the final dough ripe exactly at the end of its schedule.
+ */
+function sizeLevain(r: Recipe): Recipe {
+  const withPct = (pct: number): Recipe => ({ ...r, preferments: r.preferments.map((p) => ({ ...p, flourPct: pct })) })
+  const ripeness = (pct: number) => computeRecipe(withPct(pct)).stages.at(-1)?.ripeness ?? 1
+  let lo = 3
+  let hi = 30
+  if (ripeness(hi) <= 1) return withPct(hi)
+  if (ripeness(lo) >= 1) return withPct(lo)
+  for (let i = 0; i < 16; i++) {
+    const mid = (lo + hi) / 2
+    if (ripeness(mid) > 1) hi = mid
+    else lo = mid
+  }
+  return withPct(Math.round((lo + hi) / 2 * 2) / 2)
 }
 
 export function methodOf(r: Recipe): MethodPreset {

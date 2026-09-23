@@ -108,6 +108,11 @@ export interface KitchenSpec {
   /** null = use the mixer preset's typical temperature rise. */
   mixerRiseC: number | null
   targetFdtC: number
+  /**
+   * Room temperature at night (coolest, around 3 am). null = the room stays at roomC; otherwise
+   * roomC is the warmest (mid-afternoon) value and the model follows a daily cycle.
+   */
+  nightC: number | null
 }
 
 export interface Recipe {
@@ -303,6 +308,20 @@ export interface CurvePoint {
   t: number
   doughC: number
   envC: number
+  /** Share of the stage's planned end point reached so far (1 = ripe as planned). */
+  ripeness: number
+}
+
+/** When the final dough bakes well (hours relative to the planned bake). null = outside the modelled range. */
+export interface BakeWindow {
+  /** Ripe enough to bake. */
+  readyH: number | null
+  /** Exactly at the planned end point. */
+  bestH: number | null
+  /** Past its best (starts to over-proof). */
+  untilH: number | null
+  /** What happens if the dough waits past the planned bake in its last spot. */
+  after: CurvePoint[]
 }
 
 export interface RecipeResult {
@@ -319,4 +338,5 @@ export interface RecipeResult {
   pieces: number
   /** Final dough temperature curve (thermal model). */
   curve: CurvePoint[]
+  window: BakeWindow
 }

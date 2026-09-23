@@ -1,5 +1,6 @@
 import type {
   Advice,
+  BakeWindow,
   CurvePoint,
   IngredientLine,
   Phase,
@@ -25,6 +26,7 @@ import { phaseTempC, totalHours } from './phases'
 import { mixerById } from './mixers'
 import { flourById, ovenById, prefermentPreset, recommendedW, styleById } from './presets'
 import {
+  BAKE_WINDOW,
   REF_C,
   bigaHoursFor,
   bigaYeastFor,
@@ -39,9 +41,11 @@ import {
   simulate,
   starterForDoublings,
   yeastForEqHours,
+  type SimPoint,
   type SimResult,
   type SimSegment,
 } from './fermentation'
+import { roomTempAt } from './ambient'
 import { YEAST_SHORT, yeastFromFresh, yeastToFresh } from './yeastTypes'
 import { buildTimeline } from './timeline'
 import { formatHours, formatPct, formatTemp, formatWeight, localizeTemps, type TempUnit } from './units'
@@ -53,6 +57,21 @@ export interface ComputeOptions {
   tempUnit?: TempUnit
   /** Personal yeast calibration: >1 if doughs usually run slow, <1 if fast. */
   yeastScale?: number
+  /** Bake time (epoch ms); needed for clock-dependent effects such as a room that cools at night. */
+  bakeAtMs?: number
+}
+
+/** Hours from the first action to the bake, straight from the schedule (no model needed). */
+export function planDurationH(r: Recipe): number {
+  const finalMixH = Math.max(0, r.final.mixMinutes) / 60
+  const finalH = totalHours(r.final.phases.filter((p) => p.hours > 0))
+  const feedLead = doublingsForSeed(1) * sdDoublingHours(r.kitchen.roomC)
+  let before = 0
+  if (r.method === 'indirect') {
+    for (const p of r.preferments)
+      before = Math.max(before, totalHours(p.phases.filter((x) => x.hours > 0)) + (p.leavening === 'sourdough' ? feedLead : 0))
+  } else if (r.directLeavening === 'sourdough') before = feedLead
+  return finalMixH + finalH + before
 }
 
 /**
@@ -83,6 +102,8 @@ function prefYeast(p: PrefermentSpec, sim: SimResult, manualFresh: number | null
 
 interface PrefState {
   spec: PrefermentSpec
+  /** Room temperature when it is mixed. */
+  roomC: number
   yeastFreshPct: number
   seedPct: number
   ripeness: number
@@ -94,16 +115,29 @@ interface PrefState {
   curve: CurvePoint[]
 }
 
+/** Linear map from the simulated clocks to ripeness (every leavening is linear in its clock). */
+const ripenessOf = (c: { eq: number; sd: number; biga: number }) => (p: SimPoint) =>
+  c.eq * p.eqHours + c.sd * p.sdDoublings + c.biga * p.bigaEq18
+
+const ratio = (a: number, b: number) => (b > 0 ? a / b : 0)
+
 export function computeRecipe(recipe: Recipe, opts: ComputeOptions = {}): RecipeResult {
   const r = recipe
   const u = opts.tempUnit ?? 'C'
   const scale = Math.min(3, Math.max(0.3, opts.yeastScale ?? 1))
   const k = r.kitchen
-  const flourC = k.flourC ?? k.roomC
   const mixer = mixerById(k.mixerId)
   const mixerRise = k.mixerRiseC ?? opts.calibratedRiseC ?? mixer.riseC
   const prefRise = Math.max(0, Math.min(1.5, mixerRise * 0.3))
   const tempOf = (p: Phase) => phaseTempC(p, k)
+  const bakeMs = opts.bakeAtMs ?? (r.bakeAt ? Date.parse(r.bakeAt) : NaN)
+  const dayNight = k.nightC !== null && k.nightC !== undefined && Number.isFinite(bakeMs)
+  /** Room temperature at a moment given in hours relative to the bake. */
+  const roomAtH = (h: number) => (dayNight ? roomTempAt(bakeMs + h * 3600000, k.roomC, k.nightC) : k.roomC)
+  const segFor = (ph: Phase, startH: number, pieceMassG: number): SimSegment =>
+    ph.location === 'room' && dayNight
+      ? { envC: roomAtH(startH), envAt: (t) => roomAtH(startH + t), hours: ph.hours, pieceMassG }
+      : { envC: tempOf(ph), hours: ph.hours, pieceMassG }
   const prefs = r.method === 'indirect' ? r.preferments : []
   const advice: Advice[] = []
   const add = (a: Advice) => advice.push(a)
@@ -122,9 +156,14 @@ export function computeRecipe(recipe: Recipe, opts: ComputeOptions = {}): Recipe
   /* ---------------- Preferments ---------------- */
   const prefStates: PrefState[] = prefs.map((p) => {
     const pc = comp0.prefs.find((c) => c.id === p.id)!
+    const phases = p.phases.filter((ph) => ph.hours > 0)
+    const startH = finalStartH - totalHours(phases)
+    // Ingredients kept in the kitchen are at the room temperature of the moment you mix.
+    const room = roomAtH(startH)
+    const flourC = k.flourC ?? room
     const masses: ThermalMass[] = [{ label: 'flour', massG: pc.freshFlour, cp: C_FLOUR, tempC: flourC }]
-    if (pc.seed > 0) masses.push({ label: 'seed', massG: pc.seed, cp: mixCp(1, p.seedHydration / 100), tempC: k.roomC })
-    if (pc.salt > 0) masses.push({ label: 'salt', massG: pc.salt, cp: C_SALT, tempC: k.roomC })
+    if (pc.seed > 0) masses.push({ label: 'seed', massG: pc.seed, cp: mixCp(1, p.seedHydration / 100), tempC: room })
+    if (pc.salt > 0) masses.push({ label: 'salt', massG: pc.salt, cp: C_SALT, tempC: room })
     const ws = solveWater({
       masses,
       waterG: pc.freshWater,
@@ -133,10 +172,14 @@ export function computeRecipe(recipe: Recipe, opts: ComputeOptions = {}): Recipe
       mixerRiseC: prefRise,
       tapC: k.tapC,
     })
-    const classic = classicWaterTemp({ targetC: p.targetTempC, flourC, roomC: k.roomC, frictionFactorC: 0, prefermentTempsC: [] })
+    const classic = classicWaterTemp({ targetC: p.targetTempC, flourC, roomC: room, frictionFactorC: 0, prefermentTempsC: [] })
     const water: WaterPlan = { ...ws, targetC: p.targetTempC, mixerRiseC: prefRise, classicWaterC: classic }
-    const phases = p.phases.filter((ph) => ph.hours > 0)
-    const segs: SimSegment[] = phases.map((ph) => ({ envC: tempOf(ph), hours: ph.hours, pieceMassG: Math.max(100, pc.total) }))
+    let segStart = startH
+    const segs: SimSegment[] = phases.map((ph) => {
+      const seg = segFor(ph, segStart, Math.max(100, pc.total))
+      segStart += ph.hours
+      return seg
+    })
     const sim = simulate(segs, ws.expectedC)
     let yeastFreshPct = 0
     let seedPct = 0
@@ -150,13 +193,12 @@ export function computeRecipe(recipe: Recipe, opts: ComputeOptions = {}): Recipe
       ripeness = sim.sdDoublings / doublingsForSeed(seedPct / 100 / scale)
     }
     // Place phases on the bake-relative clock.
-    const startH = finalStartH - totalHours(phases)
     let t = startH
     const resolved: ResolvedPhase[] = phases.map((ph, i) => {
       const seg = sim.segments[i]
       const rp: ResolvedPhase = {
         ...ph,
-        tempC: tempOf(ph),
+        tempC: seg.meanEnvC,
         startH: t,
         endH: t + ph.hours,
         progress: sim.eqHours > 0 ? (seg.eqHours / sim.eqHours) * ripeness : 0,
@@ -166,8 +208,16 @@ export function computeRecipe(recipe: Recipe, opts: ComputeOptions = {}): Recipe
       t += ph.hours
       return rp
     })
+    const ripe = ripenessOf(
+      p.leavening === 'sourdough'
+        ? { eq: 0, sd: ratio(ripeness, sim.sdDoublings), biga: 0 }
+        : p.type === 'biga'
+          ? { eq: 0, sd: 0, biga: ratio(ripeness, sim.bigaEq18) }
+          : { eq: ratio(ripeness, sim.eqHours), sd: 0, biga: 0 },
+    )
     return {
       spec: p,
+      roomC: room,
       yeastFreshPct,
       seedPct,
       ripeness,
@@ -176,23 +226,25 @@ export function computeRecipe(recipe: Recipe, opts: ComputeOptions = {}): Recipe
       eqH: sim.eqHours,
       phases: resolved,
       water,
-      curve: sim.curve.map((c) => ({ t: startH + c.t, doughC: c.doughC, envC: c.envC })),
+      curve: sim.curve.map((c) => ({ t: startH + c.t, doughC: c.doughC, envC: c.envC, ripeness: ripe(c) })),
     }
   })
 
   /* ---------------- Final dough water & thermal ---------------- */
+  const finalRoom = roomAtH(finalStartH)
+  const finalFlourC = k.flourC ?? finalRoom
   const finalMasses = (comp: Composition): ThermalMass[] => {
-    const m: ThermalMass[] = [{ label: 'flour', massG: comp.final.flour, cp: C_FLOUR, tempC: flourC }]
+    const m: ThermalMass[] = [{ label: 'flour', massG: comp.final.flour, cp: C_FLOUR, tempC: finalFlourC }]
     for (const ps of prefStates) {
       const pc = comp.prefs.find((c) => c.id === ps.spec.id)!
       m.push({ label: `pref:${ps.spec.id}`, massG: pc.total, cp: mixCp(pc.flour, pc.water), tempC: ps.endC })
     }
     if (comp.final.starter > 0)
-      m.push({ label: 'starter', massG: comp.final.starter, cp: mixCp(comp.final.starterFlour, comp.final.starterWater), tempC: k.roomC })
-    if (comp.final.salt > 0) m.push({ label: 'salt', massG: comp.final.salt, cp: C_SALT, tempC: k.roomC })
-    if (comp.final.oil > 0) m.push({ label: 'oil', massG: comp.final.oil, cp: C_OIL, tempC: k.roomC })
+      m.push({ label: 'starter', massG: comp.final.starter, cp: mixCp(comp.final.starterFlour, comp.final.starterWater), tempC: finalRoom })
+    if (comp.final.salt > 0) m.push({ label: 'salt', massG: comp.final.salt, cp: C_SALT, tempC: finalRoom })
+    if (comp.final.oil > 0) m.push({ label: 'oil', massG: comp.final.oil, cp: C_OIL, tempC: finalRoom })
     if (comp.final.sugar + comp.final.malt > 0)
-      m.push({ label: 'sugar', massG: comp.final.sugar + comp.final.malt, cp: C_SUGAR, tempC: k.roomC })
+      m.push({ label: 'sugar', massG: comp.final.sugar + comp.final.malt, cp: C_SUGAR, tempC: finalRoom })
     return m
   }
   const finalWater = (comp: Composition) => {
@@ -206,8 +258,8 @@ export function computeRecipe(recipe: Recipe, opts: ComputeOptions = {}): Recipe
     })
     const classic = classicWaterTemp({
       targetC: k.targetFdtC,
-      flourC,
-      roomC: k.roomC,
+      flourC: finalFlourC,
+      roomC: finalRoom,
       frictionFactorC: mixer.classicFF,
       prefermentTempsC: prefStates.map((p) => p.endC),
     })
@@ -218,12 +270,16 @@ export function computeRecipe(recipe: Recipe, opts: ComputeOptions = {}): Recipe
 
   // Mixing time counts as fermentation at room temperature.
   const finalSegs: SimSegment[] = []
-  if (finalMixH > 0) finalSegs.push({ envC: k.roomC, hours: finalMixH, pieceMassG: Math.max(200, comp0.dough) })
+  if (finalMixH > 0) finalSegs.push({ envC: finalRoom, hours: finalMixH, pieceMassG: Math.max(200, comp0.dough) })
   let balled = false
+  let lastPiece = Math.max(200, comp0.dough)
+  let segStart = finalStartH + finalMixH
   for (const ph of finalPhases) {
     if ((ph.stage ?? 'bulk') === 'balls') balled = true
     const piece = balled ? (r.sizing.mode === 'pans' ? Math.min(pw, 300) : pw) : Math.max(200, comp0.dough)
-    finalSegs.push({ envC: tempOf(ph), hours: ph.hours, pieceMassG: piece })
+    finalSegs.push(segFor(ph, segStart, piece))
+    segStart += ph.hours
+    lastPiece = piece
   }
   const fsim = simulate(finalSegs, fw0.expectedC)
 
@@ -273,6 +329,17 @@ export function computeRecipe(recipe: Recipe, opts: ComputeOptions = {}): Recipe
   const totalLeaven = carry + finalYeastFreshPct
   const yeastFraction = totalLeaven > 0 ? eqNeeded / eqHoursForYeast('dough', totalLeaven, mFinal) : 0
   const finalRipeness = yeastFraction + sdFraction
+  const finalRipe = ripenessOf({ eq: ratio(yeastFraction, fsim.eqHours), sd: ratio(sdFraction, fsim.sdDoublings), biga: 0 })
+  const finalCurve: CurvePoint[] = fsim.curve.map((c) => ({ t: finalStartH + c.t, doughC: c.doughC, envC: c.envC, ripeness: finalRipe(c) }))
+  // Keep going past the bake in the last spot to see how long the dough holds.
+  const lastPhase = finalPhases[finalPhases.length - 1]
+  const holdH = 8
+  const hold = simulate(
+    [lastPhase ? segFor({ ...lastPhase, hours: holdH }, 0, lastPiece) : { envC: roomAtH(0), hours: holdH, pieceMassG: lastPiece }],
+    fsim.endC,
+  )
+  const after: CurvePoint[] = hold.curve.map((c) => ({ t: c.t, doughC: c.doughC, envC: c.envC, ripeness: finalRipeness + finalRipe(c) }))
+  const window = bakeWindow([...finalCurve, ...after.slice(1)], after)
 
   /* ---------------- Composition (pass 2) ---------------- */
   const plan: LeaveningPlan = { prefs: {}, finalYeastFreshPct, directStarterPct }
@@ -282,9 +349,9 @@ export function computeRecipe(recipe: Recipe, opts: ComputeOptions = {}): Recipe
   // Re-solve water with final masses (preferment seeds may have changed).
   for (const ps of prefStates) {
     const pc = comp.prefs.find((c) => c.id === ps.spec.id)!
-    const masses: ThermalMass[] = [{ label: 'flour', massG: pc.freshFlour, cp: C_FLOUR, tempC: flourC }]
-    if (pc.seed > 0) masses.push({ label: 'seed', massG: pc.seed, cp: mixCp(1, ps.spec.seedHydration / 100), tempC: k.roomC })
-    if (pc.salt > 0) masses.push({ label: 'salt', massG: pc.salt, cp: C_SALT, tempC: k.roomC })
+    const masses: ThermalMass[] = [{ label: 'flour', massG: pc.freshFlour, cp: C_FLOUR, tempC: k.flourC ?? ps.roomC }]
+    if (pc.seed > 0) masses.push({ label: 'seed', massG: pc.seed, cp: mixCp(1, ps.spec.seedHydration / 100), tempC: ps.roomC })
+    if (pc.salt > 0) masses.push({ label: 'salt', massG: pc.salt, cp: C_SALT, tempC: ps.roomC })
     const ws = solveWater({
       masses,
       waterG: pc.freshWater,
@@ -441,7 +508,7 @@ export function computeRecipe(recipe: Recipe, opts: ComputeOptions = {}): Recipe
     const seg = fsim.segments[i + offset]
     const rp: ResolvedPhase = {
       ...ph,
-      tempC: tempOf(ph),
+      tempC: seg.meanEnvC,
       startH: t,
       endH: t + ph.hours,
       progress: fsim.eqHours > 0 ? (seg.eqHours / fsim.eqHours) * finalRipeness : 0,
@@ -479,7 +546,7 @@ export function computeRecipe(recipe: Recipe, opts: ComputeOptions = {}): Recipe
     endTempC: fsim.endC,
     waterPlan: fw,
     equivalentHours20: fsim.eqHours * (rateAt(REF_C) / rateAt(20)),
-    curve: fsim.curve.map((c) => ({ t: finalStartH + c.t, doughC: c.doughC, envC: c.envC })),
+    curve: finalCurve,
   })
 
   /* ---------------- Timeline ---------------- */
@@ -503,7 +570,7 @@ export function computeRecipe(recipe: Recipe, opts: ComputeOptions = {}): Recipe
   const timeline = buildTimeline(
     {
       recipe: r,
-      tempOf,
+      tempOf: (ph, atH) => (ph.location === 'room' ? roomAtH(atH) : tempOf(ph)),
       finalMixH,
       preheatMin: oven.preheatMin,
       bakeLabel: `${style.bake}. ${style.shaping}`,
@@ -522,7 +589,7 @@ export function computeRecipe(recipe: Recipe, opts: ComputeOptions = {}): Recipe
 
   const curve: CurvePoint[] = [
     ...prefStates.flatMap((ps) => (prefStates.length === 1 ? ps.curve : [])),
-    ...fsim.curve.map((c) => ({ t: finalStartH + c.t, doughC: c.doughC, envC: c.envC })),
+    ...finalCurve,
   ]
 
   const result: RecipeResult = {
@@ -549,6 +616,7 @@ export function computeRecipe(recipe: Recipe, opts: ComputeOptions = {}): Recipe
     pieceWeight: pw,
     pieces: comp.pieces,
     curve,
+    window,
   }
 
   collectAdvice(r, result, comp, prefStates, { fw, carry, yeastNeeded, finalRipeness, required, u, add, mixerRise })
@@ -556,6 +624,30 @@ export function computeRecipe(recipe: Recipe, opts: ComputeOptions = {}): Recipe
 }
 
 /* ------------------------------------------------------------------ */
+
+/** First time the ripeness curve reaches `level` (linear interpolation), or null. */
+export function crossing(curve: CurvePoint[], level: number): number | null {
+  if (!curve.length) return null
+  if (curve[0].ripeness >= level) return curve[0].t
+  for (let i = 1; i < curve.length; i++) {
+    const a = curve[i - 1]
+    const b = curve[i]
+    if (b.ripeness >= level) {
+      const f = (level - a.ripeness) / Math.max(1e-9, b.ripeness - a.ripeness)
+      return a.t + f * (b.t - a.t)
+    }
+  }
+  return null
+}
+
+function bakeWindow(curve: CurvePoint[], after: CurvePoint[]): BakeWindow {
+  return {
+    readyH: crossing(curve, BAKE_WINDOW.min),
+    bestH: crossing(curve, 1),
+    untilH: crossing(curve, BAKE_WINDOW.max),
+    after,
+  }
+}
 
 function fmtRatio(x: number): string {
   const r = Math.round(x * 2) / 2
