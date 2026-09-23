@@ -34,7 +34,16 @@ export function Alert({
   )
 }
 
-export function AdviceList({ advice, scope }: { advice: Advice[]; scope?: string | string[] }) {
+export function AdviceList({
+  advice,
+  scope,
+  action,
+}: {
+  advice: Advice[]
+  scope?: string | string[]
+  /** Extra content inside an advice card, e.g. one-tap fixes. */
+  action?: (a: Advice) => ReactNode
+}) {
   const { tempUnit: u } = useSettings()
   const scopes = scope === undefined ? null : Array.isArray(scope) ? scope : [scope]
   const items = scopes ? advice.filter((a) => scopes.includes(a.scope)) : advice
@@ -46,6 +55,7 @@ export function AdviceList({ advice, scope }: { advice: Advice[]; scope?: string
       {sorted.map((a, i) => (
         <Alert key={`${a.title}-${i}`} severity={a.severity} title={localizeTemps(a.title, u)}>
           {a.detail && <div>{localizeTemps(a.detail, u)}</div>}
+          {action?.(a)}
         </Alert>
       ))}
     </div>

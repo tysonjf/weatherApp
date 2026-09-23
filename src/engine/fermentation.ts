@@ -202,6 +202,17 @@ export function bigaHoursFor(yFreshPct: number, hydration: number, saltPct = 0):
   return bigaRefHours(hydration) * Math.pow(yFreshPct / saltMultiplier(saltPct, hydration), -B)
 }
 
+/**
+ * MasterBiga's hot-kitchen biga (above 26 °C it matures "in two stages, first at room temperature and
+ * then in the fridge at 4 °C"): hours at room temperature before the fridge so that ~1 % fresh yeast
+ * ripens it over `totalH`. Checked against the full model with thermal lag: the room stage is ≈ 0.73 of
+ * the time the biga would need at room temperature alone, the slow cooling in the fridge does the rest.
+ */
+export function bigaRoomHours(roomC: number, hydration = 45, totalH = 24): number {
+  const atRoom = bigaHoursFor(1, hydration) * (BIGA_REF_C / Math.max(12, roomC))
+  return Math.min(totalH - 4, Math.max(2, Math.round(0.73 * atRoom * 2) / 2))
+}
+
 /* ------------------------------------------------------------------ */
 /* Sourdough (Craig's sourdough chart)                                 */
 /* ------------------------------------------------------------------ */

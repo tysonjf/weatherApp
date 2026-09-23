@@ -13,6 +13,8 @@ export interface TimelineInput {
   feedLeadH: Record<string, number>
   directFeedLeadH: number
   waterNotes: Record<string, string>
+  /** Preferments resting out of the fridge before the final mix: what to tell the baker. */
+  temperNotes?: Record<string, string>
 }
 
 const place = (loc: PhaseLocation, t: number, unit: (c: number) => string) =>
@@ -61,7 +63,22 @@ export function buildTimeline(input: TimelineInput, unit: (c: number) => string)
         location: phases[0]?.location,
       })
       phases.forEach((p, i) => {
-        if (i > 0 && p.location !== phases[i - 1].location) {
+        if (p.temper) {
+          const from = phases[i - 1]?.location === 'fridge' ? 'fridge' : 'cold'
+          events.push({
+            id: `${pf.id}-temper`,
+            kind: 'move',
+            atH: t,
+            durationMin: 2,
+            title: `Take the ${pf.name.toLowerCase()} out of the ${from}`,
+            detail:
+              input.temperNotes?.[pf.id] ??
+              `Leave it covered ${place('room', tempOf(p, t), unit)} for ${fmtH(p.hours)} so it isn't ice-cold when you mix the final dough.`,
+            stageId: pf.id,
+            tempC: tempOf(p, t),
+            location: 'room',
+          })
+        } else if (i > 0 && p.location !== phases[i - 1].location) {
           events.push({
             id: `${pf.id}-move-${i}`,
             kind: 'move',

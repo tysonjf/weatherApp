@@ -23,6 +23,11 @@ export interface Phase {
   hours: number
   /** Final dough only: bulk (puntata) happens before balling, balls (appretto) after. */
   stage?: 'bulk' | 'balls'
+  /**
+   * Set by the engine (never stored): the preferment rests out of the fridge before the final mix
+   * so the final dough reaches its temperature without hot water. Carved out of its cold phase.
+   */
+  temper?: boolean
 }
 
 export type PrefermentType =
@@ -201,6 +206,8 @@ export interface Advice {
   detail?: string
   /** Which stage the advice belongs to (preferment id, 'final' or 'recipe'). */
   scope: string
+  /** Set on advice the app can fix for you (see balance.ts). */
+  id?: 'final-over' | 'final-under' | 'biga-split'
 }
 
 export type IngredientKind =
@@ -258,6 +265,10 @@ export interface WaterPlan {
   mixerRiseC: number
   /** Classic bakers' DDT rule for comparison. */
   classicWaterC: number
+  /** Warmest water the plan allows (setting). */
+  maxWaterC: number
+  /** Minutes of extra mixing suggested to reach the target when the water is capped (friction heat). */
+  extraMixMin: number
 }
 
 export interface LeaveningResult {
@@ -297,6 +308,8 @@ export interface StageResult {
   mixTempC: number
   /** Temperature of the dough when this stage ends (thermal model). */
   endTempC: number
+  /** Preferments: hours it rests out of the fridge before the final mix (0 = straight from the fridge or never cold). */
+  temperH: number
   waterPlan: WaterPlan | null
   /** Equivalent hours at 20 °C (fermentation load). */
   equivalentHours20: number

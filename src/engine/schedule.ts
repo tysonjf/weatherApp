@@ -108,6 +108,8 @@ function moversOf(r: Recipe, e: TimelineEvent): { stageId: string; index: number
   for (const p of r.preferments) {
     const idx = liveIdx(p.phases)
     if (e.id === `${p.id}-build` || e.id === `${p.id}-feed`) return all(p.id, idx)
+    // Resting out of the fridge is timed from the final mix, so it moves with it.
+    if (e.id === `${p.id}-temper`) return all('final', final)
     const pm = new RegExp(`^${p.id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}-move-(\\d+)$`).exec(e.id)
     if (pm) return all(p.id, idx.slice(Number(pm[1])))
   }

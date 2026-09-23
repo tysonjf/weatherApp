@@ -16,8 +16,13 @@ licoli + yeast, …), each with its own multi-phase schedule across room, fridge
   sized to your schedule), or any custom mix of biga, poolish, sponge, old dough, lievito madre, licoli and custom
   preferments.
 - **Real schedules**: every stage is a list of phases (room, fridge or a custom temperature), e.g.
-  *biga 2 h room → 22 h fridge*, *poolish 1 h → 20 h fridge → 1 h wake-up*, *bulk 2 h → balls 48 h cold → 4 h
-  tempering*. Ready-made plans for each preferment, including fridge modes.
+  *biga 10 h room → 14 h fridge*, *poolish 1 h → 20 h fridge → 1 h wake-up*, *bulk 2 h → balls 48 h cold → 4 h
+  tempering*. Ready-made plans for each preferment, including fridge modes. Warm kitchens follow MasterBiga: a
+  room-temperature biga up to 26 °C, two stages timed for 1 % yeast above, fridge-only above 30 °C.
+- **Plans that add up**: new doughs start balanced, and when a plan would over- or under-ferment (say, a big
+  fridge biga before cold balls) the warning comes with one-tap fixes, each checked with the model first: a shorter
+  or longer final rise, more of it in the fridge, a smaller or bigger preferment, a biga that starts at room
+  temperature, or letting the app work out the yeast.
 - **Fit around your day**: set your sleeping (and optional working) hours and the plan flags any hands-on step
   that lands in them. One tap re-times it (fridge time first) while keeping the bake time and re-solving the yeast.
 - **Technique**: autolyse and timed stretch-and-fold sets in the guide and timeline; bassinage.
@@ -36,7 +41,9 @@ licoli + yeast, …), each with its own multi-phase schedule across room, fridge
 - **Ripeness chart and bake window**: how ripe each stage is over time, when the dough bakes well (85–130 % of the
   plan) and what happens if the pizzas wait.
 - **Water temperature from a heat balance** for every mix, switching to ice automatically and telling you when to
-  chill the flour; optional classic DDT comparison.
+  chill the flour; optional classic DDT comparison. It never asks for water warmer than your limit (30 °C by
+  default): a cold preferment rests out of the fridge first, just long enough, and a mixer that heats mixes a few
+  minutes longer.
 
 **While you make it**
 - **Live tracking**: tick a mix in the bake guide with its real time and probe temperature — the yeast is locked in
@@ -81,17 +88,18 @@ pnpm icons        # regenerate PWA icons from public/logo.svg
 
 ### Testing
 
-About 400 Vitest tests, in about 10 seconds. They check the numbers against published targets, not
+About 450 Vitest tests, in about 10 seconds. They check the numbers against published targets, not
 just against themselves:
 
 | Suite | What it checks |
 | --- | --- |
-| `engine/targets.test.ts` | Published reference points: Craig's yeast chart, AVPN yeast and salt, MasterBiga timings, the poolish table, Craig's sourdough chart and everyday starter percentages, the heat of hydration, dough-ball cooling times, yeast-type ratios, altitude pressure, AVPN/NY/Detroit toppings and portions. |
+| `engine/targets.test.ts` | Published reference points: Craig's yeast chart, AVPN yeast and salt, MasterBiga timings, the poolish table, Craig's sourdough chart and everyday starter percentages, the heat of hydration, dough-ball cooling times, a fridge biga's rest before the final mix (30 min – 3 h, water ≤ 30 °C), yeast-type ratios, altitude pressure, AVPN/NY/Detroit toppings and portions. |
 | `engine/invariants.test.ts` | Every style × every leavening method × 16–32 °C kitchens, with and without cool nights: the mass and baker's percentages add up, nothing is NaN, automatic stages are ripe exactly on time, water and ice stay within their limits, the timeline and bake guide are in order, and °F users never see °C. |
 | `engine/presets.test.ts` | The style, oven, flour, schedule, preferment and mixer data is consistent (every reference exists, every default sits in its range, no sugar or oil in a 400 °C+ oven). |
+| `engine/balance.test.ts` | Every fix for an over- or under-fermenting plan lands the dough in the window and changes only what it says; the bug-report plan (fridge biga + cold balls) leads with the biga; every new dough, style × method × 18–30 °C, starts balanced. |
 | `engine/*.test.ts` | Each model on its own: fermentation, thermal lag, water temperature (and the textbook ice rule), units, live re-planning, fitting your day, calibration, pizza night, small quantities. |
 | `state/*.test.ts` | New recipes from every style and method, switching styles, migrating old saves, share links, the store (duplicates, backups, reloads). |
-| `app.test.tsx` | The UI in jsdom: the wizard end to end, every style and method on every tab, editing, the menu, the journal, live tracking, bake mode, import, tools, guides and settings. Any React error fails the test. |
+| `app.test.tsx` | The UI in jsdom: the wizard end to end, every style and method on every tab, editing, the menu, the journal, live tracking, bake mode, import, tools, guides and settings, the one-tap fixes and the rest out of the fridge. Any React error fails the test. |
 
 Engine tests run in Node; UI tests opt into jsdom with a `// @vitest-environment jsdom` comment. CI
 (`.github/workflows/ci.yml`) runs lint, the tests and the build on every push and pull request.
@@ -123,7 +131,9 @@ The engine is in `src/engine/` and is plain TypeScript with no UI. Its tests sit
 | Sourdough | Craig's sourdough chart: starter % = 89.4 · 2^(−Σt/D(T)). Levain builds (no salt) run about 1.6× faster, and a 1 : 1 : 1 feed peaks after about 1.95 doublings. From that come feed ratios, levain timing and starter %. |
 | Several leaveners | Each preferment's leftover yeast or ripeness counts towards the final dough. The final dough's extra yeast only makes up the rest. |
 | Thermal lag | Newton cooling per piece with τ ≈ 2 h × ∛(mass / 250 g), integrated in ≤ 6-minute steps. The chart and the ripeness both use the simulated dough temperature. |
-| Water temperature | Heat balance: flour 1.80, water 4.186, salt 0.86, oil 2.0, sugar 1.25 kJ/kg·K; preferments as their flour/water mix; +15.1 kJ per kg of newly wetted flour (hydration heat); plus the mixer's mechanical rise. Ice uses latent heat 333.6 kJ/kg, which reproduces the textbook `(tap − need)/(tap + 80)` rule. Water is capped at 35 °C and ice at 35 % of the water. |
+| Water temperature | Heat balance: flour 1.80, water 4.186, salt 0.86, oil 2.0, sugar 1.25 kJ/kg·K; preferments as their flour/water mix; +15.1 kJ per kg of newly wetted flour (hydration heat); plus the mixer's mechanical rise. Ice uses latent heat 333.6 kJ/kg, which reproduces the textbook `(tap − need)/(tap + 80)` rule. Ice is capped at 35 % of the water and the water at your warmest (30 °C by default). |
+| Cold preferments | A preferment that ends colder than the kitchen rests out of the fridge before the final mix, carved out of its cold phase (same start, same mix time): the shortest rest, in 15-minute steps up to 3 h, that keeps the water under your limit, found by bisection on Newton warming. If that isn't enough, the final mix runs longer (friction at the mixer's rate per minute, up to half as long again); the rest is left as a cooler start the forecast allows for. |
+| Balancing | Fixes are found by bisection on one knob each — a scale on the final phases (warm-up after the fridge kept, sub-1.5 h fridge stints dropped), fridge hours at a fixed total, the preferment shares, or MasterBiga's room/fridge split for a biga (room ≈ 0.73 × K(H)/T for 1 % yeast) — and each is re-run through the full model before it's offered. |
 | Yeast types | Fresh = 1, active dry = 0.4, instant = ⅓ (by weight). |
 | Ripeness & bake window | Every leavening is linear in its clock, so ripeness over time is a straight map of the simulated clocks. The final dough is simulated 8 h past the bake to find when it leaves the 85–130 % window. |
 | Room at night | Cosine between the day (warmest ~16:00) and night (coolest ~04:00) temperatures, evaluated on each phase's real clock. |

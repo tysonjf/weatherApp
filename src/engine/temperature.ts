@@ -24,8 +24,13 @@ export const C_OIL = 2.0
 export const C_SUGAR = 1.25
 export const L_FUSION = 333.6 // kJ/kg
 export const Q_HYDRATION = 15.1 // kJ per kg of newly wetted flour
-/** Hottest water we'll suggest (yeast dissolved in water gets stressed above ~35 °C). */
-export const MAX_WATER_C = 35
+/**
+ * Warmest water we suggest by default. Pizza doughs are mixed with cool to tepid water; above ~30 °C
+ * fresh yeast dissolved in it starts to suffer and a cold preferment meets hot water unevenly. When a
+ * dough would need more, a cold preferment rests out of the fridge first and the mix runs longer
+ * (see compute.ts). The cap is a setting.
+ */
+export const DEFAULT_MAX_WATER_C = 30
 /** Keep ice to at most this share of the water so it melts and hydrates evenly. */
 export const MAX_ICE_SHARE = 0.35
 
@@ -53,6 +58,8 @@ export interface WaterSolveInput {
   mixerRiseC: number
   /** Coldest liquid water available (tap / fridge) before switching to ice. */
   tapC: number
+  /** Warmest water to suggest (default DEFAULT_MAX_WATER_C). */
+  maxWaterC?: number
 }
 
 export interface WaterSolveResult {
@@ -108,14 +115,15 @@ export function solveWater(input: WaterSolveInput): WaterSolveResult {
     }
   }
   const ideal = (mixTarget * (C + W * C_WATER) - H - Q) / (W * C_WATER)
+  const maxWater = Math.max(input.tapC, input.maxWaterC ?? DEFAULT_MAX_WATER_C)
 
-  if (ideal > MAX_WATER_C) {
+  if (ideal > maxWater) {
     return {
       idealWaterC: ideal,
-      waterC: MAX_WATER_C,
+      waterC: maxWater,
       iceG: 0,
       liquidG: W,
-      expectedC: doughTempFor(input, MAX_WATER_C),
+      expectedC: doughTempFor(input, maxWater),
       status: 'too-hot',
     }
   }

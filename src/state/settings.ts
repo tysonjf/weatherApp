@@ -1,5 +1,6 @@
 import type { YeastType } from '../engine/types'
 import type { TempUnit, WeightUnit } from '../engine/units'
+import { DEFAULT_MAX_WATER_C } from '../engine/temperature'
 
 export type Theme = 'auto' | 'light' | 'dark'
 export type TimeFormat = '24h' | '12h'
@@ -16,6 +17,8 @@ export interface Settings {
   nightC: number | null
   fridgeC: number
   tapC: number
+  /** Warmest water the app will suggest; beyond it cold preferments rest out of the fridge and the mix runs longer. */
+  maxWaterC: number
   mixerId: string
   /** Calibrated temperature rise per mixer id (°C), set by the friction calibration tool. */
   mixerRise: Record<string, number>
@@ -47,6 +50,7 @@ export const DEFAULT_SETTINGS: Settings = {
   nightC: null,
   fridgeC: 4,
   tapC: 10,
+  maxWaterC: DEFAULT_MAX_WATER_C,
   mixerId: 'hand',
   mixerRise: {},
   showClassicDdt: false,

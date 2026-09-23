@@ -1,6 +1,7 @@
 import type { PhaseLocation, PrefermentSpec, PrefermentType } from '../../engine/types'
 import { PREFERMENTS, prefermentPreset } from '../../engine/presets'
 import { makePhase } from '../../engine/phases'
+import { bigaRoomHours } from '../../engine/fermentation'
 import { formatPct, formatTemp, localizeTemps } from '../../engine/units'
 import { YEAST_LABEL, YEAST_SHORT, yeastFromFresh } from '../../engine/yeastTypes'
 import { NumberField, Segmented, TempField } from '../../components/fields'
@@ -11,6 +12,7 @@ import { makePreferment } from '../../state/recipes'
 import { bakeDateOf } from '../../state/hooks'
 import { useSettings } from '../../state/store'
 import type { StepProps } from './steps'
+import { useAdviceActions } from '../../components/useAdviceActions'
 
 interface PlanPreset {
   label: string
@@ -19,13 +21,15 @@ interface PlanPreset {
   hydration?: number
 }
 
-function plansFor(type: PrefermentType): PlanPreset[] {
+function plansFor(type: PrefermentType, roomC: number): PlanPreset[] {
   switch (type) {
-    case 'biga':
+    case 'biga': {
+      // MasterBiga's two-stage biga for hot kitchens, timed for ~1 % yeast at this kitchen's temperature.
+      const x = bigaRoomHours(Math.max(26, roomC))
       return [
         { label: 'Classic · 18 h at 18 °C', phases: [{ location: 'custom', hours: 18, customTempC: 18 }], targetTempC: 19 },
         { label: 'Room · 16 h', phases: [{ location: 'room', hours: 16 }], targetTempC: 19 },
-        { label: 'Hot kitchen · 2 h room → 22 h fridge', phases: [{ location: 'room', hours: 2 }, { location: 'fridge', hours: 22 }], targetTempC: 20 },
+        { label: `Hot kitchen · ${x} h room → ${24 - x} h fridge`, phases: [{ location: 'room', hours: x }, { location: 'fridge', hours: 24 - x }], targetTempC: 19 },
         {
           label: 'Long · 24 h fridge → 24 h at 18 °C',
           phases: [
@@ -36,6 +40,7 @@ function plansFor(type: PrefermentType): PlanPreset[] {
         },
         { label: 'Cold biga · straight into the fridge 36 h', phases: [{ location: 'fridge', hours: 36 }], targetTempC: 25, hydration: 50 },
       ]
+    }
     case 'poolish':
       return [
         { label: 'Overnight · 14 h room', phases: [{ location: 'room', hours: 14 }] },
@@ -62,6 +67,7 @@ function plansFor(type: PrefermentType): PlanPreset[] {
 
 export function StepPreferment({ prefId, recipe, update, result }: StepProps & { prefId: string }) {
   const settings = useSettings()
+  const action = useAdviceActions(recipe, result, (next) => update(() => next))
   const p = recipe.preferments.find((x) => x.id === prefId)
   if (!p) return <p className="muted">This preferment no longer exists.</p>
   const preset = prefermentPreset(p.type)
@@ -125,7 +131,7 @@ export function StepPreferment({ prefId, recipe, update, result }: StepProps & {
       <SectionTitle>Fermentation plan</SectionTitle>
       <div className="card stack">
         <div className="row wrap">
-          {plansFor(p.type).map((pl) => (
+          {plansFor(p.type, recipe.kitchen.roomC).map((pl) => (
             <button
               key={pl.label}
               type="button"
@@ -263,7 +269,7 @@ export function StepPreferment({ prefId, recipe, update, result }: StepProps & {
         </div>
       </Details>
 
-      {result && <AdviceList advice={result.advice} scope={p.id} />}
+      {result && <AdviceList advice={result.advice} scope={p.id} action={action} />}
       {stage && <StageCard stage={stage} recipe={recipe} bake={bake} />}
       {stage?.waterPlan && (
         <p className="muted small">

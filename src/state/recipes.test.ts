@@ -68,11 +68,27 @@ describe('makePreferment', () => {
     expect(poolish.phases.every((p) => p.location !== 'fridge')).toBe(true)
   })
 
-  it('moves biga and poolish to the fridge in a hot kitchen', () => {
-    const biga = makePreferment('biga', 40, { roomC: 26 })
-    expect(biga.phases.map((p) => p.location)).toEqual(['room', 'fridge'])
+  it('follows MasterBiga in warm kitchens: room up to 26 °C, then two stages, then fridge only', () => {
+    expect(makePreferment('biga', 40, { roomC: 25 }).phases.map((p) => [p.location, p.hours])).toEqual([['room', 18]])
+    const twoStage = makePreferment('biga', 40, { roomC: 28 })
+    expect(twoStage.phases.map((p) => p.location)).toEqual(['room', 'fridge'])
+    expect(twoStage.phases.reduce((s, p) => s + p.hours, 0)).toBe(24)
+    const hot = makePreferment('biga', 40, { roomC: 32 })
+    expect(hot.phases.map((p) => p.location)).toEqual(['fridge'])
+    expect(hot.hydration).toBe(60)
+    expect(hot.targetTempC).toBe(25)
     const poolish = makePreferment('poolish', 30, { roomC: 27 })
     expect(poolish.phases.map((p) => p.location)).toEqual(['room', 'fridge'])
+  })
+
+  it("times MasterBiga's two-stage biga for about 1 % fresh yeast", () => {
+    for (const roomC of [27, 29]) {
+      const s = { ...DEFAULT_SETTINGS, roomC, yeastType: 'fresh' as const }
+      const r = applyMethod(recipeFromStyle('canotto', s), 'biga', s)
+      const biga = computeRecipe(r).stages[0]
+      expect(biga.leavening.freshPct, `${roomC} °C`).toBeGreaterThan(0.85)
+      expect(biga.leavening.freshPct, `${roomC} °C`).toBeLessThan(1.2)
+    }
   })
 
   it('manual amounts default to sensible starting points', () => {

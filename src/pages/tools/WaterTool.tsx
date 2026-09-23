@@ -44,7 +44,7 @@ export function WaterTool() {
       tempC: p.tempC,
     })),
   ]
-  const r = solveWater({ masses, waterG: water, newFlourG: freshFlour, targetC, mixerRiseC: riseC, tapC })
+  const r = solveWater({ masses, waterG: water, newFlourG: freshFlour, targetC, mixerRiseC: riseC, tapC, maxWaterC: settings.maxWaterC })
   const classic = classicWaterTemp({
     targetC,
     flourC,
@@ -85,8 +85,9 @@ export function WaterTool() {
 
         {r.status === 'too-hot' && (
           <Alert severity="warn" title="Water alone can't warm this dough enough">
-            It would need {formatTemp(r.idealWaterC, u)} water; capped at {formatTemp(r.waterC, u)} to protect the yeast.
-            Temper the preferment or flour first, or accept {formatTemp(r.expectedC, u)} and allow more time.
+            It would need {formatTemp(r.idealWaterC, u)} water; capped at {formatTemp(r.waterC, u)}, your warmest (Settings).
+            Let a cold preferment rest out of the fridge for an hour or two, warm the flour, or mix a little longer — or accept{' '}
+            {formatTemp(r.expectedC, u)} and allow more time.
           </Alert>
         )}
         {r.status === 'too-cold' && (

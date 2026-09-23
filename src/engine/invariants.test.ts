@@ -5,7 +5,8 @@
  * and ice limits, and lay out a sane timeline and bake guide.
  */
 import { describe, expect, it } from 'vitest'
-import { computeRecipe } from './compute'
+import { MAX_TEMPER_H, computeRecipe } from './compute'
+import { balanceFixes } from './balance'
 import { buildGuide } from './instructions'
 import { STYLES } from './presets'
 import type { Recipe, RecipeResult } from './types'
@@ -77,22 +78,53 @@ function check(v: Variant, res: RecipeResult) {
   const directStarterClamped = r.method === 'direct' && r.directLeavening === 'sourdough' && (final.leavening.starterPct >= 59.9 || final.leavening.starterPct <= 0.51)
   if (r.method === 'direct' && !directStarterClamped) expect(final.ripeness, at('direct dough ripe at the bake')).toBeCloseTo(1, 2)
   if (r.method === 'indirect' && r.final.extraYeastMode === 'auto') {
-    // Extra yeast can only add: ripe, or riper when the preferments alone carry enough (and then it says so).
-    expect(final.ripeness, at('indirect dough at least ripe')).toBeGreaterThan(0.98)
-    if (final.ripeness > 1.15) expect(res.advice.some((a) => a.scope === 'final'), at('over-ripe advice')).toBe(true)
+    // Extra yeast can only add (a pinch under 5 % of the need is skipped): ripe, or riper when the
+    // preferments alone carry enough — and then it says so and offers fixes.
+    expect(final.ripeness, at('indirect dough at least ripe')).toBeGreaterThan(0.95)
+    if (final.ripeness > 1.15) expect(res.advice.some((a) => a.id === 'final-over'), at('over-ripe advice')).toBe(true)
   }
+  // New plans start balanced whenever a fix exists (a night-time cycle depends on the bake time, which
+  // a new plan doesn't have yet: those get the warning and its fixes instead).
+  if (final.ripeness > 1.15 && r.method === 'indirect' && r.kitchen.nightC == null)
+    expect(balanceFixes(r, res, { bakeAtMs: BAKE }).filter((f) => f.id === 'shorter' || f.id === 'fridge'), at('left unbalanced')).toEqual([])
 
   // 4. Water and ice stay within what a kitchen can do.
   for (const s of res.stages) {
     const w = s.waterPlan
     if (!w) continue
     expect(['ok', 'ice', 'too-cold', 'too-hot'], at(`${s.title} water status`)).toContain(w.status)
-    if (Number.isFinite(w.waterC)) expect(w.waterC, at(`${s.title} water ≤ 35 °C`)).toBeLessThanOrEqual(35 + 1e-9)
+    if (Number.isFinite(w.waterC)) expect(w.waterC, at(`${s.title} water ≤ the warmest allowed`)).toBeLessThanOrEqual(w.maxWaterC + 1e-9)
+    expect(w.maxWaterC).toBe(30)
+    expect(w.extraMixMin, at('extra mixing')).toBeGreaterThanOrEqual(0)
+    if (w.extraMixMin > 0) expect(w.status, at('mixes longer only when the water is capped')).toBe('too-hot')
     expect(w.iceG, at(`${s.title} ice ≥ 0`)).toBeGreaterThanOrEqual(0)
     expect(w.iceG, at(`${s.title} ice ≤ 35 % of the water`)).toBeLessThanOrEqual(0.35 * (w.iceG + w.liquidG) + 1e-6)
     if (w.status === 'ok' || w.status === 'ice') expect(s.mixTempC, at(`${s.title} hits its target temperature`)).toBeCloseTo(w.targetC, 1)
     if (w.status === 'too-hot') expect(s.mixTempC, at(`${s.title} too-hot means below target`)).toBeLessThan(w.targetC)
     if (w.status === 'too-cold') expect(s.mixTempC, at(`${s.title} too-cold means above target`)).toBeGreaterThan(w.targetC)
+  }
+
+  // 4b. Rests out of the fridge: only after a cold phase, carved out of it (the preferment keeps its
+  // length), at most MAX_TEMPER_H, in quarter hours, and announced in the timeline before the mix.
+  for (const s of res.stages) {
+    if (s.kind !== 'preferment') continue
+    const spec = r.preferments.find((p) => p.id === s.id)!
+    const rest = s.phases.filter((p) => p.temper)
+    expect(rest.length, at('one rest at most')).toBeLessThanOrEqual(1)
+    expect(s.temperH).toBeCloseTo(rest[0]?.hours ?? 0, 9)
+    expect(s.phases.reduce((t, p) => t + p.hours, 0), at('rest carved out of the schedule')).toBeCloseTo(
+      spec.phases.reduce((t, p) => t + Math.max(0, p.hours), 0),
+      9,
+    )
+    if (rest.length) {
+      expect(s.phases.at(-1)!.temper, at('rest comes last')).toBe(true)
+      expect(s.phases.at(-2)!.location, at('rest follows the cold')).not.toBe('room')
+      expect(rest[0].hours).toBeLessThanOrEqual(MAX_TEMPER_H)
+      expect((rest[0].hours * 4) % 1).toBeCloseTo(0, 9)
+      const ev = res.timeline.find((e) => e.id === `${s.id}-temper`)
+      expect(ev, at('rest in the timeline')).toBeDefined()
+      expect(ev!.atH).toBeCloseTo(rest[0].startH, 9)
+    }
   }
 
   // 5. Timeline: ordered, unique, ends with the bake, starts the plan.

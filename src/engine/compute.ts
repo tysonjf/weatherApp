@@ -17,6 +17,7 @@ import {
   C_OIL,
   C_SALT,
   C_SUGAR,
+  DEFAULT_MAX_WATER_C,
   classicWaterTemp,
   mixCp,
   solveWater,
@@ -49,8 +50,8 @@ import { roomTempAt } from './ambient'
 import { pressureRatio } from './altitude'
 import { YEAST_SHORT, yeastFromFresh, yeastToFresh } from './yeastTypes'
 import { buildTimeline } from './timeline'
-import { formatHours, formatPct, formatTemp, formatWeight, localizeTemps, type TempUnit } from './units'
-import { hoursToReach } from './thermal'
+import { formatHours, formatPct, formatTemp, formatTempDelta, formatWeight, localizeTemps, type TempUnit } from './units'
+import { hoursToReach, tauHours } from './thermal'
 
 export interface ComputeOptions {
   /** Calibrated mechanical rise for the recipe's mixer (from settings). */
@@ -64,7 +65,12 @@ export interface ComputeOptions {
   altitudeM?: number
   /** Bake time (epoch ms); needed for clock-dependent effects such as a room that cools at night. */
   bakeAtMs?: number
+  /** Warmest water to suggest (°C, setting). */
+  maxWaterC?: number
 }
+
+/** Longest a cold preferment rests out of the fridge before the final mix. Pros say 1–2 h; it keeps fermenting meanwhile. */
+export const MAX_TEMPER_H = 3
 
 /** Hours from the first action to the bake, straight from the schedule (no model needed). */
 export function planDurationH(r: Recipe): number {
@@ -109,6 +115,8 @@ interface PrefState {
   spec: PrefermentSpec
   /** Room temperature when it is mixed. */
   roomC: number
+  /** Hours it rests out of the fridge before the final mix. */
+  temperH: number
   yeastFreshPct: number
   seedPct: number
   ripeness: number
@@ -138,6 +146,10 @@ export function computeRecipe(recipe: Recipe, opts: ComputeOptions = {}): Recipe
   const mixer = mixerById(k.mixerId)
   const mixerRise = k.mixerRiseC ?? opts.calibratedRiseC ?? mixer.riseC
   const prefRise = Math.max(0, Math.min(1.5, mixerRise * 0.3))
+  const maxWaterC = Math.min(45, Math.max(15, opts.maxWaterC ?? DEFAULT_MAX_WATER_C))
+  // Friction heat per minute of mixing: the mixer's rise comes from its typical mix.
+  const baseMixMin = Math.max(1, r.final.mixMinutes || mixer.mixMinutes)
+  const risePerMin = mixerRise > 0 ? mixerRise / baseMixMin : 0
   const tempOf = (p: Phase) => phaseTempC(p, k)
   const bakeMs = opts.bakeAtMs ?? (r.bakeAt ? Date.parse(r.bakeAt) : NaN)
   const dayNight = k.nightC !== null && k.nightC !== undefined && Number.isFinite(bakeMs)
@@ -163,12 +175,34 @@ export function computeRecipe(recipe: Recipe, opts: ComputeOptions = {}): Recipe
   const finalStartH = -(finalH + finalMixH)
 
   /* ---------------- Preferments ---------------- */
+  // A preferment that finishes colder than the kitchen (fridge, cellar) can rest out of the cold before
+  // the final mix. The rest is carved out of the end of its cold phase, so its start and the final mix
+  // stay where they are.
+  const livePhases = (p: PrefermentSpec) => p.phases.filter((ph) => ph.hours > 0)
+  const coldEnd = (p: PrefermentSpec) => {
+    const last = livePhases(p).at(-1)
+    return !!last && last.location !== 'room' && tempOf(last) <= roomAtH(finalStartH) - 3
+  }
+  const temperFor = (p: PrefermentSpec, temperH: number) =>
+    coldEnd(p) ? Math.max(0, Math.min(temperH, livePhases(p).at(-1)!.hours - 0.25)) : 0
+  const effectivePhases = (p: PrefermentSpec, temperH: number): Phase[] => {
+    const live = livePhases(p)
+    const t = temperFor(p, temperH)
+    if (t <= 0) return live
+    const last = live[live.length - 1]
+    return [
+      ...live.slice(0, -1),
+      { ...last, hours: last.hours - t },
+      { id: `${last.id}-temper`, location: 'room', hours: t, customTempC: last.customTempC, temper: true },
+    ]
+  }
+
   // Masses for the water solves come from `mc`. The leavening itself changes those masses (a large
   // sourdough seed is a lot of cold or warm dough), so the passes below are iterated to a fixed point.
-  const makePrefStates = (mc: Composition): PrefState[] =>
+  const makePrefStates = (mc: Composition, temperH: number): PrefState[] =>
     prefs.map((p) => {
       const pc = mc.prefs.find((c) => c.id === p.id)!
-      const phases = p.phases.filter((ph) => ph.hours > 0)
+      const phases = effectivePhases(p, temperH)
       const startH = finalStartH - totalHours(phases)
       // Ingredients kept in the kitchen are at the room temperature of the moment you mix.
       const room = roomAtH(startH)
@@ -183,9 +217,10 @@ export function computeRecipe(recipe: Recipe, opts: ComputeOptions = {}): Recipe
         targetC: p.targetTempC,
         mixerRiseC: prefRise,
         tapC: k.tapC,
+        maxWaterC,
       })
       const classic = classicWaterTemp({ targetC: p.targetTempC, flourC, roomC: room, frictionFactorC: 0, prefermentTempsC: [] })
-      const water: WaterPlan = { ...ws, targetC: p.targetTempC, mixerRiseC: prefRise, classicWaterC: classic }
+      const water: WaterPlan = { ...ws, targetC: p.targetTempC, mixerRiseC: prefRise, classicWaterC: classic, maxWaterC, extraMixMin: 0 }
       let segStart = startH
       const segs: SimSegment[] = phases.map((ph) => {
         const seg = segFor(ph, segStart, Math.max(100, pc.total))
@@ -234,6 +269,7 @@ export function computeRecipe(recipe: Recipe, opts: ComputeOptions = {}): Recipe
       return {
         spec: p,
         roomC: room,
+        temperH: temperFor(p, temperH),
         yeastFreshPct,
         seedPct,
         ripeness,
@@ -264,15 +300,27 @@ export function computeRecipe(recipe: Recipe, opts: ComputeOptions = {}): Recipe
       m.push({ label: 'sugar', massG: comp.final.sugar + comp.final.malt, cp: C_SUGAR, tempC: finalRoom })
     return m
   }
+  const finalWaterInput = (comp: Composition, states: PrefState[]) => ({
+    masses: finalMasses(comp, states),
+    waterG: comp.final.water,
+    newFlourG: comp.final.flour,
+    targetC: k.targetFdtC,
+    mixerRiseC: mixerRise,
+    tapC: k.tapC,
+    maxWaterC,
+  })
   const finalWater = (comp: Composition, states: PrefState[]) => {
-    const ws = solveWater({
-      masses: finalMasses(comp, states),
-      waterG: comp.final.water,
-      newFlourG: comp.final.flour,
-      targetC: k.targetFdtC,
-      mixerRiseC: mixerRise,
-      tapC: k.tapC,
-    })
+    const input = finalWaterInput(comp, states)
+    let ws = solveWater(input)
+    // Water at the cap and still short: mix longer, a mixer's friction is heat you don't pour in.
+    // At most half as long again (and 10 minutes): past that the gluten suffers, not just the temperature.
+    let extraMixMin = 0
+    if (ws.status === 'too-hot' && risePerMin >= 0.05) {
+      const maxExtra = Math.min(10, Math.max(2, Math.round(baseMixMin * 0.5)))
+      extraMixMin = Math.min(maxExtra, Math.ceil((k.targetFdtC - ws.expectedC) / risePerMin - 0.05))
+      if (extraMixMin > 0) ws = solveWater({ ...input, mixerRiseC: mixerRise + extraMixMin * risePerMin })
+      else extraMixMin = 0
+    }
     const classic = classicWaterTemp({
       targetC: k.targetFdtC,
       flourC: finalFlourC,
@@ -280,8 +328,46 @@ export function computeRecipe(recipe: Recipe, opts: ComputeOptions = {}): Recipe
       frictionFactorC: mixer.classicFF,
       prefermentTempsC: states.map((p) => p.endC),
     })
-    const plan: WaterPlan = { ...ws, targetC: k.targetFdtC, mixerRiseC: mixerRise, classicWaterC: classic }
+    const plan: WaterPlan = {
+      ...ws,
+      targetC: k.targetFdtC,
+      mixerRiseC: mixerRise + extraMixMin * risePerMin,
+      classicWaterC: classic,
+      maxWaterC,
+      extraMixMin,
+    }
     return plan
+  }
+
+  /**
+   * How long cold preferments rest out of the fridge: just long enough that the final dough needs no
+   * water above the cap (in 15-minute steps), and no longer than MAX_TEMPER_H or their cold phase.
+   */
+  const chooseTemper = (mc: Composition, states: PrefState[]): { temperH: number; coldWaterC: number } => {
+    const none = { temperH: 0, coldWaterC: NaN }
+    const cold = states.filter((ps) => coldEnd(ps.spec))
+    if (!cold.length) return none
+    const room = (t: number) => roomAtH(finalStartH - t / 2)
+    const warmed = (ps: PrefState, t: number) => {
+      const pc = mc.prefs.find((c) => c.id === ps.spec.id)!
+      const tt = temperFor(ps.spec, t)
+      return room(tt) - (room(tt) - ps.endC) * Math.exp(-tt / tauHours(Math.max(100, pc.total)))
+    }
+    const need = (t: number) =>
+      solveWater(finalWaterInput(mc, states.map((ps) => (coldEnd(ps.spec) ? { ...ps, endC: warmed(ps, t) } : ps)))).idealWaterC
+    const coldWaterC = need(0)
+    if (!(coldWaterC > maxWaterC)) return none
+    const tMax = Math.min(MAX_TEMPER_H, Math.max(...cold.map((ps) => livePhases(ps.spec).at(-1)!.hours - 0.25)))
+    if (tMax < 0.25) return none
+    if (need(tMax) > maxWaterC) return { temperH: Math.floor(tMax * 4) / 4, coldWaterC }
+    let lo = 0
+    let hi = tMax
+    for (let i = 0; i < 20; i++) {
+      const mid = (lo + hi) / 2
+      if (need(mid) > maxWaterC) lo = mid
+      else hi = mid
+    }
+    return { temperH: Math.min(Math.floor(tMax * 4) / 4, Math.ceil(hi * 4 - 1e-6) / 4), coldWaterC }
   }
 
   /* ---------------- Final dough fermentation & leavening ---------------- */
@@ -344,7 +430,10 @@ export function computeRecipe(recipe: Recipe, opts: ComputeOptions = {}): Recipe
     let finalYeastFreshPct = 0
     if (leavenedByStarter) finalYeastFreshPct = manualExtra
     else if (r.method === 'direct') finalYeastFreshPct = r.final.extraYeastMode === 'manual' ? manualExtra : yeastNeeded
-    else finalYeastFreshPct = r.final.extraYeastMode === 'auto' ? Math.max(0, yeastNeeded - carry) : manualExtra
+    else if (r.final.extraYeastMode === 'auto')
+      // A pinch the preferments almost cover (< 5 % of the need) isn't worth weighing: skip it.
+      finalYeastFreshPct = yeastNeeded - carry > 0.05 * yeastNeeded ? yeastNeeded - carry : 0
+    else finalYeastFreshPct = manualExtra
 
     const totalLeaven = carry + finalYeastFreshPct
     const finalActivity = r.final.activity ?? 1
@@ -372,20 +461,26 @@ export function computeRecipe(recipe: Recipe, opts: ComputeOptions = {}): Recipe
       targetC: ps.spec.targetTempC,
       mixerRiseC: prefRise,
       tapC: k.tapC,
+      maxWaterC,
     })
   }
-  let prefStates = makePrefStates(comp0)
+  let prefStates = makePrefStates(comp0, 0)
   let fin = makeFinal(comp0, prefStates)
   let comp = computeComposition(r, planOf(prefStates, fin))
-  for (let pass = 0; pass < 5; pass++) {
+  // Cold preferments: rest them out of the fridge rather than pour hot water on them.
+  const { temperH, coldWaterC } = chooseTemper(comp, prefStates)
+  let moved = temperH > 0
+  for (let pass = 0; pass < 6; pass++) {
     // Would the real masses change any starting dough temperature? Only then simulate again.
-    const moved =
+    moved =
+      moved ||
       prefStates.some((ps) => ps.spec.measuredMixC == null && Math.abs(prefWaterWith(ps, comp).expectedC - ps.mixC) > 0.02) ||
       (r.final.measuredMixC == null && Math.abs(finalWater(comp, prefStates).expectedC - fin.finalStartC) > 0.02)
     if (!moved) break
-    prefStates = makePrefStates(comp)
+    prefStates = makePrefStates(comp, temperH)
     fin = makeFinal(comp, prefStates)
     comp = computeComposition(r, planOf(prefStates, fin))
+    moved = false
   }
   const { fsim, lastPiece, carry, yeastNeeded, finalYeastFreshPct, directStarterPct, yeastFraction, finalRipeness } = fin
   const sdFraction = fin.sdFraction
@@ -479,6 +574,7 @@ export function computeRecipe(recipe: Recipe, opts: ComputeOptions = {}): Recipe
       ripeness: ps.ripeness,
       mixTempC: ps.mixC,
       endTempC: ps.endC,
+      temperH: ps.temperH,
       waterPlan: ps.water,
       equivalentHours20: ps.eqH * (rateAt(REF_C) / rateAt(20)),
       clocks: { eqHours21: ps.eqH, sdDoublings: ps.sdD },
@@ -586,6 +682,7 @@ export function computeRecipe(recipe: Recipe, opts: ComputeOptions = {}): Recipe
     ripeness: finalRipeness,
     mixTempC: r.final.measuredMixC ?? fw.expectedC,
     endTempC: fsim.endC,
+    temperH: 0,
     waterPlan: fw,
     equivalentHours20: fsim.eqHours * (rateAt(REF_C) / rateAt(20)),
     clocks: { eqHours21: fsim.eqHours, sdDoublings: fsim.sdDoublings },
@@ -606,13 +703,25 @@ export function computeRecipe(recipe: Recipe, opts: ComputeOptions = {}): Recipe
     const pc = comp.prefs.find((c) => c.id === ps.spec.id)!
     waterNotes[ps.spec.id] = waterNote(ps.water, pc.freshWater)
   }
-  waterNotes.final = `${waterNote(fw, comp.final.water)} Aim for a dough at ${formatTemp(k.targetFdtC, u)} when kneading ends.`
+  waterNotes.final = `${waterNote(fw, comp.final.water)} Aim for a dough at ${formatTemp(k.targetFdtC, u)} when kneading ends.${
+    fw.extraMixMin > 0 ? ` Mix ${fw.extraMixMin} min longer than usual: the friction is what warms it the rest of the way.` : ''
+  }`
+  const temperNotes: Record<string, string> = {}
+  for (const ps of prefStates) {
+    if (ps.temperH <= 0) continue
+    const cold = ps.phases.at(-2)?.endDoughC ?? ps.endC
+    temperNotes[ps.spec.id] =
+      `Leave it covered at room temperature for ${formatHours(ps.temperH)}: it warms from about ${formatTemp(cold, u, 0)} to ${formatTemp(ps.endC, u, 0)}, ` +
+      `so the final dough needs water at ${formatTemp(fw.waterC, u)}${Number.isFinite(coldWaterC) ? ` instead of ${formatTemp(coldWaterC, u)}` : ''}.`
+  }
   const feedLead: Record<string, number> = {}
   const oneToOneH = (doublingsForSeed(1) * sdDoublingHours(k.roomC)) / speed
   for (const ps of prefStates) if (ps.spec.leavening === 'sourdough') feedLead[ps.spec.id] = oneToOneH
+  // The timeline shows the rest out of the fridge as its own step.
+  const withRests: Recipe = { ...r, preferments: r.preferments.map((p) => ({ ...p, phases: effectivePhases(p, temperH) })) }
   const timeline = buildTimeline(
     {
-      recipe: r,
+      recipe: withRests,
       tempOf: (ph, atH) => (ph.location === 'room' ? roomAtH(atH) : tempOf(ph)),
       finalMixH,
       preheatMin: oven.preheatMin,
@@ -620,6 +729,7 @@ export function computeRecipe(recipe: Recipe, opts: ComputeOptions = {}): Recipe
       feedLeadH: feedLead,
       directFeedLeadH: r.method === 'direct' && r.directLeavening === 'sourdough' ? oneToOneH : 0,
       waterNotes,
+      temperNotes,
     },
     (c) => formatTemp(c, u, 0),
   ).map((e) => ({ ...e, detail: e.detail && localizeTemps(e.detail, u) }))
@@ -662,7 +772,7 @@ export function computeRecipe(recipe: Recipe, opts: ComputeOptions = {}): Recipe
     window,
   }
 
-  collectAdvice(r, result, comp, prefStates, { fw, carry, yeastNeeded, finalRipeness, required, u, add, mixerRise })
+  collectAdvice(r, result, comp, prefStates, { fw, carry, yeastNeeded, finalRipeness, required, u, add, mixerRise, coldWaterC })
   return result
 }
 
@@ -692,6 +802,11 @@ function bakeWindow(curve: CurvePoint[], after: CurvePoint[]): BakeWindow {
   }
 }
 
+/** "a, b and c" */
+function joinList(items: string[], last = 'and'): string {
+  return items.length <= 1 ? items.join('') : `${items.slice(0, -1).join(', ')} ${last} ${items[items.length - 1]}`
+}
+
 function fmtRatio(x: number): string {
   const r = Math.round(x * 2) / 2
   return `${r} : ${r}`
@@ -706,6 +821,8 @@ interface AdviceCtx {
   u: TempUnit
   add: (a: Advice) => void
   mixerRise: number
+  /** Water the final dough would need with its cold preferments straight from the fridge (NaN = none). */
+  coldWaterC: number
 }
 
 function collectAdvice(r: Recipe, res: RecipeResult, comp: Composition, prefStates: PrefState[], ctx: AdviceCtx) {
@@ -762,16 +879,54 @@ function collectAdvice(r: Recipe, res: RecipeResult, comp: Composition, prefStat
         title: `${name}: even with ice the dough will be ${formatTemp(w.expectedC, u)}`,
         detail: `Chill the flour${w.flourNeededC !== undefined ? ` (to about ${formatTemp(w.flourNeededC, u, 0)})` : ''} or the preferments beforehand. The forecast already assumes the warmer start.`,
       })
-    if (w.status === 'too-hot')
+    if (w.status === 'too-hot') {
+      // Say what the plan already does to warm it, then what's left to try.
+      const rests = scope === 'final' ? prefStates.filter((ps) => ps.temperH > 0) : []
+      const cold = scope === 'final' && prefStates.some((ps) => ps.endC < k.roomC - 3)
+      const done = [
+        `water at ${formatTemp(w.waterC, u)}, the warmest this plan uses`,
+        ...(rests.length
+          ? [`the ${joinList(rests.map((ps) => ps.spec.name.toLowerCase()))} resting ${formatHours(Math.max(...rests.map((ps) => ps.temperH)))} out of the fridge first`]
+          : []),
+        ...(w.extraMixMin > 0 ? [`${w.extraMixMin} extra minutes of mixing`] : []),
+      ]
+      const more = [
+        'keep the flour somewhere warm',
+        ...(cold && !rests.some((ps) => ps.temperH >= MAX_TEMPER_H) ? ['let the preferments rest out of the fridge longer'] : []),
+        'allow warmer water in Settings',
+      ]
       add({
-        severity: 'warn',
+        severity: w.targetC - w.expectedC > 1.5 ? 'warn' : 'tip',
         scope,
-        title: `${name}: water alone can't warm this dough to target`,
-        detail: `It would need ${formatTemp(w.idealWaterC, u)} water; use ${formatTemp(w.waterC, u)} and expect ${formatTemp(w.expectedC, u)}. Let cold preferments warm up first, or use warmer flour. The forecast already accounts for the cooler start.`,
+        title: `${name} will finish at ${formatTemp(w.expectedC, u)} (target ${formatTemp(w.targetC, u)})`,
+        detail: `That's with ${joinList(done)}. The forecast already allows for the cooler start. To get closer, ${joinList(more, 'or')}.`,
       })
+    }
   }
   for (const ps of prefStates) describeWater(ps.water, ps.spec.id, ps.spec.name)
   describeWater(ctx.fw, 'final', r.method === 'indirect' ? 'Final dough' : 'Dough')
+
+  // Cold preferments rest out of the fridge instead of meeting hot water.
+  for (const ps of prefStates) {
+    if (ps.temperH <= 0) continue
+    const from = ps.phases.at(-2)?.location === 'fridge' ? 'fridge' : 'cold'
+    add({
+      severity: 'tip',
+      scope: ps.spec.id,
+      title: `Take the ${ps.spec.name.toLowerCase()} out of the ${from} ${formatHours(ps.temperH)} before the final mix`,
+      detail: `Straight from the ${from} (≈ ${formatTemp(ps.phases.at(-2)?.endDoughC ?? ps.endC, u, 0)}) it would need ${formatTemp(ctx.coldWaterC, u)} water to bring the final dough to ${formatTemp(k.targetFdtC, u)}. Resting at room temperature it warms to about ${formatTemp(ps.endC, u, 0)}, so ${formatTemp(ctx.fw.waterC, u)} water does it. It keeps fermenting meanwhile; the plan counts that.`,
+    })
+  }
+  if (ctx.fw.extraMixMin > 0) {
+    const extraRise = ctx.fw.mixerRiseC - ctx.mixerRise
+    const usual = Math.max(1, r.final.mixMinutes)
+    add({
+      severity: 'tip',
+      scope: 'final',
+      title: `Mix ${ctx.fw.extraMixMin} minutes longer`,
+      detail: `${usual + ctx.fw.extraMixMin} minutes in all instead of ${usual}: the extra friction adds about ${formatTempDelta(extraRise, u)} so the water can stay at ${formatTemp(ctx.fw.waterC, u)}. Check with a thermometer and stop once the dough is smooth and strong.`,
+    })
+  }
 
   // Preferment-specific wisdom
   for (const ps of prefStates) {
@@ -780,7 +935,7 @@ function collectAdvice(r: Recipe, res: RecipeResult, comp: Composition, prefStat
     if (p.type === 'biga') {
       if (p.hydration < 40 || p.hydration > 60)
         add({ severity: 'warn', scope: p.id, title: 'Biga hydration is outside 40–60 %', detail: 'Classic bigas sit at 44–50 %; MasterBiga-style hot-weather bigas go up to 60 %.' })
-      const roomPhase = ps.phases.find((x) => x.location === 'room')
+      const roomPhase = ps.phases.find((x) => x.location === 'room' && !x.temper)
       if (roomPhase && k.roomC > 30)
         add({
           severity: 'warn',
@@ -794,6 +949,16 @@ function collectAdvice(r: Recipe, res: RecipeResult, comp: Composition, prefStat
           scope: p.id,
           title: 'Hot room: use a two-stage biga',
           detail: 'Above 26 °C start the biga at room temperature, then finish it in the fridge (4 °C) to keep it from over-ripening.',
+        })
+      // MasterBiga's 1 %: a mostly-cold biga needs far more yeast, and all of it goes into the final dough.
+      if (p.amountMode === 'auto' && ps.yeastFreshPct > 1.5 && k.roomC <= 30 && ps.phases.some((x) => x.location === 'fridge'))
+        add({
+          severity: 'tip',
+          scope: p.id,
+          id: 'biga-split',
+          title: `This biga needs ${formatPct(ps.yeastFreshPct)} fresh yeast${r.yeastType !== 'fresh' ? ` (${formatPct(yeastFromFresh(ps.yeastFreshPct, r.yeastType), 2)} ${YEAST_SHORT[r.yeastType]})` : ''}`,
+          detail:
+            'It spends most of its time in the fridge, so it takes a lot of yeast to ripen, and all of that yeast goes on into the final dough, which then races. MasterBiga keeps bigas at about 1 %: its first hours at room temperature, then the fridge.',
         })
       if (first && first.location !== 'fridge' && ps.mixC > 21.5)
         add({
@@ -865,6 +1030,7 @@ function collectAdvice(r: Recipe, res: RecipeResult, comp: Composition, prefStat
     add({
       severity: strong ? 'warn' : 'tip',
       scope: 'final',
+      id: 'final-over',
       title: strong ? 'The preferments alone will over-ferment this dough' : 'Preferments will run a little ahead',
       detail: strong
         ? `No extra yeast is needed, and the dough will likely be ready about ${formatHours(hoursFaster)} early. Shorten the final fermentation, move part of it to the fridge, or use a smaller preferment share.`
@@ -878,22 +1044,24 @@ function collectAdvice(r: Recipe, res: RecipeResult, comp: Composition, prefStat
       detail: 'The ripe preferments carry enough leavening for the final fermentation.',
     })
   }
-  if (final.ripeness > 0 && (r.final.extraYeastMode === 'manual' || r.final.extraYeastMode === 'none')) {
-    if (final.ripeness < 0.8)
-      add({
-        severity: 'warn',
-        scope: 'final',
-        title: `Dough will be under-proofed (${Math.round(final.ripeness * 100)} %)`,
-        detail: 'Add yeast or time, or switch extra yeast to Auto.',
-      })
-    if (final.ripeness > 1.3)
-      add({
-        severity: 'warn',
-        scope: 'final',
-        title: `Dough will be over-proofed (${Math.round(final.ripeness * 100)} %)`,
-        detail: 'Reduce yeast or shorten the schedule.',
-      })
-  }
+  // Amounts the baker set (or a starter that hit its limits) can leave the dough off target at the bake.
+  const autoIndirect = r.method === 'indirect' && r.final.extraYeastMode === 'auto'
+  if (final.ripeness > 0 && final.ripeness < 0.8)
+    add({
+      severity: 'warn',
+      scope: 'final',
+      id: 'final-under',
+      title: `Dough will be under-proofed (${Math.round(final.ripeness * 100)} %)`,
+      detail: 'It needs more leavening, more time or more warmth to be ready at the bake.',
+    })
+  if (final.ripeness > 1.3 && !autoIndirect)
+    add({
+      severity: 'warn',
+      scope: 'final',
+      id: 'final-over',
+      title: `Dough will be over-proofed (${Math.round(final.ripeness * 100)} %)`,
+      detail: 'It has more leavening than the schedule needs: less of it, less time or a cooler rise.',
+    })
   if (final.leavening.kind === 'yeast' && final.leavening.grams > 0 && final.leavening.grams < 0.3)
     add({
       severity: 'tip',

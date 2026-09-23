@@ -82,8 +82,20 @@ describe('water temperature heat balance', () => {
       tapC: 10,
     })
     expect(r.status).toBe('too-hot')
-    expect(r.waterC).toBe(35)
+    expect(r.waterC).toBe(30)
     expect(r.expectedC).toBeLessThan(24)
+    // The cap is a setting.
+    const warmer = solveWater({
+      masses: [flour(0, 20), { label: 'biga', massG: 1450, cp: mixCp(1000, 450), tempC: 4 }],
+      waterG: 200,
+      newFlourG: 0,
+      targetC: 24,
+      mixerRiseC: 3,
+      tapC: 10,
+      maxWaterC: 35,
+    })
+    expect(warmer.waterC).toBe(35)
+    expect(warmer.expectedC).toBeGreaterThan(r.expectedC)
   })
 
   it('implements the classic DDT rule', () => {

@@ -121,12 +121,13 @@ export function WizardPage() {
               <Icon name="chevronLeft" />
             </button>
           )}
+          {/* Distinct keys: a quick second tap on "Next" must not land on "Save" reusing the same button. */}
           {idx < steps.length - 1 ? (
-            <button className="btn primary" onClick={() => go(idx + 1)}>
+            <button key="next" className="btn primary" onClick={() => go(idx + 1)}>
               Next: {steps[idx + 1].label} <Icon name="chevronRight" size={18} />
             </button>
           ) : (
-            <button className="btn primary" onClick={save}>
+            <button key="save" className="btn primary" onClick={save}>
               <Icon name="check" size={18} /> Save & see the forecast
             </button>
           )}

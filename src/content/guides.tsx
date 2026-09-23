@@ -43,14 +43,18 @@ export const GUIDES: Guide[] = [
           Each preferment (biga, poolish, sponge, sourdough…) is fermented on its own schedule and gets its own yeast.
           When it goes into the final dough it brings a ripe, active yeast population. The app credits that leavening
           power and only adds extra yeast to the final dough if the preferments can't carry the final fermentation on
-          their own — and warns you when they would over-ferment it.
+          their own. When they would over-ferment it, it offers fixes you apply with one tap — a shorter final rise,
+          more of it in the fridge, a smaller preferment — each one checked with the model first. New doughs start
+          balanced.
         </p>
         <h3>Water temperature</h3>
         <p>
           Instead of the bakers' "multiply by three" rule, the water temperature comes from a heat balance: each
           ingredient's mass × specific heat × temperature, plus the heat released when dry flour gets wet (≈ <Delta sign="+" c={3} /> in a
-          65 % dough), plus your mixer's kneading heat. It handles cold preferments straight from the fridge and tells
-          you exactly how much ice to use when your tap water isn't cold enough.
+          65 % dough), plus your mixer's kneading heat. It tells you exactly how much ice to use when your tap water
+          isn't cold enough. It never asks for water warmer than your limit (30 °C by default, in Settings): a cold
+          preferment rests out of the fridge first, just long enough, and a mixer that heats the dough mixes a few
+          minutes longer.
         </p>
         <h3>Calibrate it</h3>
         <p>
@@ -78,7 +82,9 @@ export const GUIDES: Guide[] = [
           <li>Flour 100 · water 44–50 · fresh yeast 1 % (≈ 0.33 % instant dry).</li>
           <li>Mix to 18–20 °C, ferment 16–24 h at about 18 °C. That's the reference point everything else scales from.</li>
           <li>Warmer room → less yeast or shorter time; colder → more. Pizza Weather computes it for your schedule.</li>
-          <li>Cold biga: 24 h at 4 °C + 12–24 h at 16–18 °C, or 1 h room → 24–48 h fridge. Take it out 1–2 h before the final mix if you want it less cold (the water temperature compensates either way).</li>
+          <li>Cold biga: 24 h at 4 °C + 12–24 h at 16–18 °C, or 1 h room → 24–48 h fridge. Take it out of the fridge before the final mix — the app works out how long (usually 30 min – 2 h) so the water stays tepid.</li>
+          <li>Hot kitchen (MasterBiga): up to 26 °C a biga matures at room temperature on less yeast; above 26 °C in two stages, hours at room first (timed for 1 % yeast), then the fridge; above 30 °C a 60 % biga straight into the fridge.</li>
+          <li>A biga kept mostly in the fridge needs 2–3 % yeast to ripen, and all of it goes into the final dough, which then races. Give it its hours at room temperature first — the app offers that as a one-tap fix.</li>
         </ul>
         <h3>How to mix</h3>
         <ol>
@@ -166,7 +172,7 @@ export const GUIDES: Guide[] = [
           <li>Add the flour gradually, mixing until no dry flour remains. Rest 10–20 min if the dough feels tight.</li>
           <li>Add salt, knead to good strength, then bassinage (reserved water) and oil last.</li>
         </ol>
-        <p className="muted">A cold poolish straight from the fridge is fine — the app raises the water temperature to compensate.</p>
+        <p className="muted">A cold poolish straight from the fridge is fine: the app warms the water to compensate, and if that would take more than your warmest water it has the poolish rest out of the fridge first.</p>
       </>
     ),
   },
@@ -232,7 +238,7 @@ export const GUIDES: Guide[] = [
         </ul>
         <h3>What changes the water temperature</h3>
         <ul>
-          <li><b>Flour and preferment temperature</b>: a biga straight from a 4 °C fridge needs much warmer water.</li>
+          <li><b>Flour and preferment temperature</b>: a biga straight from a 4 °C fridge needs much warmer water — or a rest out of the fridge first, which is what the app plans rather than going past your warmest water.</li>
           <li><b>Hydration heat</b>: dry flour releases heat when wetted — about <Delta sign="+" c={3} /> in a 65 % dough.</li>
           <li><b>Mixer heat</b>: hand kneading adds ~<Delta c={0.5} to={1} />, fork mixers ~<Delta c={1} to={2} />, spiral and planetary mixers ~<Delta c={3} to={5} />, food processors much more.</li>
         </ul>
