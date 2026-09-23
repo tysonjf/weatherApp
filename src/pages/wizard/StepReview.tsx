@@ -1,4 +1,5 @@
 import { AdviceList, SectionTitle } from '../../components/ui'
+import { FitCard } from '../../components/FitCard'
 import { stageEmoji } from '../../components/stageMeta'
 import { formatHours, formatPct, formatTemp, formatWeight } from '../../engine/units'
 import { styleById } from '../../engine/presets'
@@ -32,6 +33,8 @@ export function StepReview({ recipe, update, result }: StepProps) {
           />
         </div>
       </div>
+
+      {result && <FitCard recipe={recipe} result={result} bake={bake} onApply={(next) => update(() => next)} />}
 
       {result && (
         <>

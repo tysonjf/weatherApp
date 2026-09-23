@@ -1,5 +1,5 @@
 import { TopBar } from '../components/Layout'
-import { NumberField, Segmented, SelectField, Switch, TempDeltaField, TempField } from '../components/fields'
+import { ClockField, NumberField, Segmented, SelectField, Switch, TempDeltaField, TempField } from '../components/fields'
 import { SectionTitle } from '../components/ui'
 import { MIXERS, mixerById } from '../engine/mixers'
 import type { YeastType } from '../engine/types'
@@ -142,6 +142,25 @@ export function SettingsPage() {
             checked={settings.showClassicDdt}
             onChange={(showClassicDdt) => setSettings({ showClassicDdt })}
           />
+        </div>
+
+        <SectionTitle>My day</SectionTitle>
+        <div className="card stack">
+          <p className="muted small" style={{ margin: 0 }}>
+            Plans flag hands-on steps that land in these hours, and “Fit around my day” stretches the fridge time (or
+            moves a step) so they don’t.
+          </p>
+          <div className="grid-2">
+            <ClockField label="Asleep from" hours={settings.sleepFrom} onChange={(sleepFrom) => setSettings({ sleepFrom })} />
+            <ClockField label="Up at" hours={settings.sleepTo} onChange={(sleepTo) => setSettings({ sleepTo })} />
+          </div>
+          <Switch label="Busy on weekdays (work, school run…)" checked={settings.workOn} onChange={(workOn) => setSettings({ workOn })} />
+          {settings.workOn && (
+            <div className="grid-2">
+              <ClockField label="From" hours={settings.workFrom} onChange={(workFrom) => setSettings({ workFrom })} />
+              <ClockField label="Until" hours={settings.workTo} onChange={(workTo) => setSettings({ workTo })} />
+            </div>
+          )}
         </div>
 
         <SectionTitle>About</SectionTitle>

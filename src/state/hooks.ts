@@ -2,7 +2,17 @@ import { useEffect, useMemo, useState } from 'react'
 import type { Recipe, RecipeResult } from '../engine/types'
 import { computeRecipe, planDurationH } from '../engine/compute'
 import { useSettings } from './store'
+import type { DayPlan } from '../engine/schedule'
 import { defaultBakeTime } from '../lib/time'
+
+/** The hours the user doesn't want to be in the kitchen. */
+export function useDayPlan(): DayPlan {
+  const s = useSettings()
+  return useMemo(
+    () => ({ sleepFrom: s.sleepFrom, sleepTo: s.sleepTo, workOn: s.workOn, workFrom: s.workFrom, workTo: s.workTo }),
+    [s.sleepFrom, s.sleepTo, s.workOn, s.workFrom, s.workTo],
+  )
+}
 
 /** The user's calibrations and units as engine options (without the bake time). */
 export function useComputeOptions(recipe: Recipe | null | undefined) {

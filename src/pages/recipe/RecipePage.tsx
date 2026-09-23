@@ -18,6 +18,7 @@ import { shareUrl } from '../../state/share'
 import { GuideTab } from './GuideTab'
 import { FormulaTab } from './FormulaTab'
 import { LiveCard } from './LiveCard'
+import { FitCard } from '../../components/FitCard'
 
 type Tab = 'recipe' | 'forecast' | 'guide' | 'formula'
 
@@ -227,6 +228,7 @@ export function RecipePage() {
                 />
               </div>
             </div>
+            <FitCard recipe={recipe} result={result} bake={bake} onApply={(next) => saveRecipe(next)} />
             <AdviceList advice={result.advice.filter((a) => a.severity !== 'info')} />
             {result.stages.map((s) => (
               <StageCard key={s.id} stage={s} recipe={recipe} bake={bake} checked={checked} onToggle={(k) => toggleStep(recipe.id, k)} />
@@ -269,6 +271,7 @@ export function RecipePage() {
                 now={now}
               />
             </div>
+            <FitCard recipe={recipe} result={result} bake={bake} onApply={(next) => saveRecipe(next)} />
             <div className="card">
               <div className="card-head">
                 <h3>Forecast</h3>

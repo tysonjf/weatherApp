@@ -23,6 +23,12 @@ export interface Settings {
   showClassicDdt: boolean
   /** Personal calibration on every computed yeast / starter amount (1 = model as-is). */
   yeastScale: number
+  /** My day: no hands-on steps while asleep (local hours; may wrap past midnight) or at work. */
+  sleepFrom: number
+  sleepTo: number
+  workOn: boolean
+  workFrom: number
+  workTo: number
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -39,4 +45,9 @@ export const DEFAULT_SETTINGS: Settings = {
   mixerRise: {},
   showClassicDdt: false,
   yeastScale: 1,
+  sleepFrom: 23,
+  sleepTo: 7,
+  workOn: false,
+  workFrom: 9,
+  workTo: 17.5,
 }

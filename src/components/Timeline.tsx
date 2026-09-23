@@ -1,6 +1,7 @@
 import type { TimelineEvent } from '../engine/types'
 import { formatHours, formatTemp } from '../engine/units'
-import { atTime } from '../state/hooks'
+import { clashes } from '../engine/schedule'
+import { atTime, useDayPlan } from '../state/hooks'
 import { formatDayClock } from '../lib/time'
 import { useSettings } from '../state/store'
 import { Icon, type IconName } from './Icon'
@@ -18,6 +19,8 @@ const KIND: Record<TimelineEvent['kind'], { icon: IconName; tone: string }> = {
 
 export function Timeline({ events, bake, now }: { events: TimelineEvent[]; bake: Date; now: Date }) {
   const { timeFormat, tempUnit } = useSettings()
+  const plan = useDayPlan()
+  const clash = new Map(clashes(events, bake.getTime(), plan).map((c) => [c.event.id, c.block.kind]))
   const nowH = (now.getTime() - bake.getTime()) / 3600000
   const nextIdx = events.findIndex((e) => e.atH >= nowH)
 
@@ -41,6 +44,11 @@ export function Timeline({ events, bake, now }: { events: TimelineEvent[]; bake:
                 {formatDayClock(at, timeFormat)}
                 {isNext && inH > 0 && <span style={{ color: 'var(--primary)' }}> · in {formatHours(inH)}</span>}
                 {e.tempC !== undefined && <> · {formatTemp(e.tempC, tempUnit, 0)}</>}
+                {clash.has(e.id) && !past && (
+                  <span className={`badge ${clash.get(e.id) === 'sleep' ? 'cold' : 'warm'}`} style={{ marginLeft: 6 }}>
+                    {clash.get(e.id) === 'sleep' ? '😴 while you sleep' : '💼 while you work'}
+                  </span>
+                )}
               </div>
               <div className="t-title">{e.title}</div>
               {e.detail && <div className="t-detail">{e.detail}</div>}

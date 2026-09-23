@@ -362,3 +362,26 @@ export function LengthField({
     )
   return <NumberField label={label} value={cm} onChange={onChange} unit="cm" step={1} min={5} max={150} decimals={1} hint={hint} />
 }
+
+/** A time of day, stored as decimal hours (e.g. 17.5 = 17:30). */
+export function ClockField({ label, hours, onChange }: { label: ReactNode; hours: number; onChange: (h: number) => void }) {
+  const id = useId()
+  const hh = Math.floor(hours) % 24
+  const mm = Math.round((hours - Math.floor(hours)) * 60)
+  const value = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`
+  return (
+    <div className="field">
+      <label htmlFor={id}>{label}</label>
+      <input
+        id={id}
+        className="textbox"
+        type="time"
+        value={value}
+        onChange={(e) => {
+          const [h, m] = e.target.value.split(':').map(Number)
+          if (Number.isFinite(h) && Number.isFinite(m)) onChange(h + m / 60)
+        }}
+      />
+    </div>
+  )
+}
